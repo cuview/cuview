@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+use super::WorldLoader;
+
+struct Loader {}
+
+/*impl WorldLoader for Loader {
+
+}
+
+pub fn get_loader() -> impl WorldLoader {
+	Loader
+}*/
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LevelDat {
@@ -50,4 +62,25 @@ pub struct LevelDatForgeRegistryEntry {
 pub struct LevelDatForgeMod {
 	pub modId: String,
 	pub modVersion: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChunkWrapper {
+	pub dataVersion: i32,
+	pub level: Chunk,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Chunk {
+	pub sections: Vec<ChunkSection>,
+	pub heightMap: Vec<i32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChunkSection {
+	pub y: i8,
+	pub blocks: Vec<i8>,
 }

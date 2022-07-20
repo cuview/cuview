@@ -1,7 +1,7 @@
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ResourceLocation {
-	modid: String,
-	name: String,
+	pub modid: String,
+	pub name: String,
 }
 
 impl ResourceLocation {
@@ -23,15 +23,51 @@ impl ResourceLocation {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BlockPos {
-	x: i32,
-	y: i32,
-	z: i32,
+	pub x: i32,
+	pub y: i32,
+	pub z: i32,
+}
+
+impl BlockPos {
+	pub fn new(x: i32, y: i32, z: i32) -> Self {
+		Self { x, y, z }
+	}
+
+	pub fn chunk_relative(&self) -> Self {
+		Self {
+			x: self.x.rem_euclid(16),
+			y: self.y.rem_euclid(16),
+			z: self.z.rem_euclid(16),
+		}
+	}
+}
+
+#[test]
+fn test_blockpos() {
+	let pos = BlockPos::new(0, 0, 0);
+	assert!(pos.chunk_relative() == pos);
+
+	let pos = BlockPos::new(-1, 0, 0);
+	assert!(pos.chunk_relative() == BlockPos::new(15, 0, 0));
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkPos {
-	x: i32,
-	z: i32,
+	pub x: i32,
+	pub z: i32,
+}
+
+impl ChunkPos {
+	pub fn new(x: i32, z: i32) -> Self {
+		Self { x, z }
+	}
+
+	pub fn region_relative(&self) -> Self {
+		Self {
+			x: self.x.rem_euclid(32),
+			z: self.z.rem_euclid(32),
+		}
+	}
 }
 
 impl From<BlockPos> for ChunkPos {
@@ -43,10 +79,27 @@ impl From<BlockPos> for ChunkPos {
 	}
 }
 
+#[test]
+fn test_chunkpos() {
+	let pos = ChunkPos::new(0, 0);
+	assert!(pos.region_relative() == pos);
+
+	let pos = ChunkPos::new(-1, 0);
+	assert!(pos.region_relative() == ChunkPos::new(31, 0));
+
+	assert!(ChunkPos::from(BlockPos::new(-1, 0, 0)) == pos);
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RegionPos {
-	x: i32,
-	z: i32,
+	pub x: i32,
+	pub z: i32,
+}
+
+impl RegionPos {
+	pub fn new(x: i32, z: i32) -> Self {
+		Self { x, z }
+	}
 }
 
 impl From<BlockPos> for RegionPos {
