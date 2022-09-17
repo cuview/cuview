@@ -13,9 +13,10 @@ name = "cuview"
 path = "src/main.rs"
 
 [dependencies]
-serde = "1.0.137"
-serde_json = "1.0.81"
+serde = "1.0"
+serde_json = "1.0"
+lazy_static = "1.4"
 
 [dependencies.hematite-nbt]
-version = "0.5.2"
+version = "0.5"
 features = ["serde"]

@@ -49,7 +49,7 @@ impl AnvilRegion {
 
 	fn get_offsets(&self, pos: ChunkPos) -> (usize, usize) {
 		let pos = pos.region_relative();
-		self.chunkOffsets[(pos.z * 32 + pos.x) as usize]
+		self.chunkOffsets[(pos.z * RegionPos::diameterChunks + pos.x) as usize]
 	}
 
 	fn get_compressed_chunk(&self, pos: ChunkPos) -> &[u8] {

@@ -40,6 +40,7 @@ name = "cuview"
 version = "0.1.0"
 dependencies = [
  "hematite-nbt",
+ "lazy_static",
  "serde",
  "serde_json",
 ]
@@ -71,6 +72,12 @@ name = "itoa"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112c678d4050afce233f4f2852bb2eb519230b3cf12f33585275537d7e41578d"
+
+[[package]]
+name = "lazy_static"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "miniz_oxide"
