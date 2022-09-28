@@ -2,6 +2,8 @@
 
 use std::sync::{Arc, RwLock};
 
+pub mod jarfs;
 pub mod loader;
+pub mod renderer;
 pub mod types;
 pub mod world;

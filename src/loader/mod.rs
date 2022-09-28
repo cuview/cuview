@@ -8,6 +8,7 @@ use crate::world::{Chunk, Dimension, Region, World};
 
 pub mod common;
 pub mod mc1_18;
+pub mod model;
 
 pub trait WorldLoader {
 	fn load_world(&self) -> Shared<World>;
