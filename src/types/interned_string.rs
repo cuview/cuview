@@ -1,6 +1,5 @@
 use std::collections::HashSet;
-use std::fmt;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Display};
 use std::ptr::eq as ptr_eq;
 use std::sync::RwLock;
 
@@ -57,6 +56,12 @@ impl std::ops::Deref for IString {
 impl PartialEq for IString {
 	fn eq(&self, other: &Self) -> bool {
 		ptr_eq(self.0, other.0)
+	}
+}
+
+impl Display for IString {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(self.0)
 	}
 }
 
