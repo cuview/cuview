@@ -4,11 +4,12 @@ pub mod interned_string;
 pub mod shared;
 
 use std::cell::RefCell;
+use std::fmt::{Debug, Display};
 
 pub use coords::{BlockPos, ChunkPos, RegionPos};
 pub use interned_string::IString;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResourceLocation {
 	pub modid: IString,
 	pub name: IString,
@@ -33,6 +34,18 @@ impl From<&str> for ResourceLocation {
 				name: to_lowercase_istring(combined),
 			}
 		}
+	}
+}
+
+impl Display for ResourceLocation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&format!("{}:{}", self.modid, self.name))
+	}
+}
+
+impl Debug for ResourceLocation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		<Self as Display>::fmt(self, f)
 	}
 }
 
