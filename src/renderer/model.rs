@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::hash::Hash;
 
-use glam::Vec3;
+use glam::{Vec3, Vec2};
 use serde::Deserialize;
 
 use crate::loader::model::MergedModel;
@@ -230,11 +230,15 @@ impl Model {
 
 		for elem in &json.elements {
 			let cube = Cube::new(Vec3::from(elem.from) / 16.0, Vec3::from(elem.to) / 16.0);
-
 			for (&dir, face) in &elem.faces {
 				let mut verts = cube.vertices(dir);
-				// TODO: use specified uvs if any
-
+				if let Some(rect) = face.uv {
+					let mins = Vec2::new(rect[0], rect[1]) / 16.0;
+					let maxs = Vec2::new(rect[2], rect[3]) / 16.0;
+					for vert in &mut verts {
+						vert.uv = (mins + (maxs - mins) * Vec2::from(vert.uv)).into();
+					}
+				}
 				res.faces.push(Face {
 					texture: face.texture.as_str().into(),
 					verts,
