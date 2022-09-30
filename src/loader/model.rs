@@ -10,6 +10,7 @@ use crate::jarfs::JarFS;
 use crate::renderer::model::Direction;
 use crate::types::blockstate::BlockState;
 use crate::types::ResourceLocation;
+use crate::types::resource_location::ResourceKind;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
@@ -149,7 +150,8 @@ pub struct Face {
 
 	pub cullface: Option<Direction>,
 
-	pub rotation: Option<i32>,
+	#[serde(rename = "rotation")]
+	pub textureRotation: Option<i32>,
 
 	pub tintindex: Option<i32>,
 }
@@ -167,45 +169,10 @@ impl ModelCache {
 		}
 	}
 
-	fn resource_for_zip_path(path: &Path) -> ResourceLocation {
-		let modid = path
-			.components()
-			.skip(1)
-			.take(1)
-			.nth(0)
-			.unwrap()
-			.as_os_str()
-			.to_str()
-			.unwrap();
-		let modelPath = path
-			.components()
-			.skip(3)
-			.collect::<PathBuf>()
-			.to_str()
-			.unwrap()
-			.replace(std::path::MAIN_SEPARATOR, "/");
-		ResourceLocation::new(modid, &modelPath)
-	}
-
 	pub fn load_jsons(&mut self, fs: &JarFS) {
-		let files = fs.all_files();
-		let files: Vec<_> = files
-			.iter()
-			.filter(|&v| {
-				let components: Vec<_> = v
-					.components()
-					.map(|v| v.as_os_str().to_str().unwrap())
-					.collect();
-				match components.as_slice() {
-					["assets", _, "models", "block", ..] => true,
-					_ => false,
-				}
-			})
-			.collect();
-
-		for path in files {
-			let loc = Self::resource_for_zip_path(&path.with_extension(""));
-			let model: JsonModel = serde_json::from_str(&fs.read_text(path).unwrap()).unwrap();
+		for path in fs.files(ResourceKind::Model) {
+			let (loc, _) = ResourceLocation::from_path(&path);
+			let model: JsonModel = serde_json::from_str(&fs.read_text(&path).unwrap()).unwrap();
 			self.jsons.insert(loc, model);
 		}
 	}

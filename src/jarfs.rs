@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 use zip::ZipArchive;
 
+use crate::types::resource_location::ResourceKind;
+
 struct JarFile {
 	path: PathBuf,
 	zipfile: RefCell<ZipArchive<File>>,
@@ -38,6 +40,23 @@ impl JarFS {
 			res.extend(jar.zipfile.borrow().file_names().map(Into::into));
 		}
 		res
+	}
+
+	pub fn files(&self, kind: ResourceKind) -> BTreeSet<PathBuf> {
+		let mut files = self.all_files();
+		files.retain(|path| {
+			let components: Vec<_> = path
+				.components()
+				.map(|v| v.as_os_str().to_str().unwrap())
+				.collect();
+			match components.as_slice() {
+				["assets", _, "blockstates", ..] => kind == ResourceKind::BlockState,
+				["assets", _, "models", "block", ..] => kind == ResourceKind::Model,
+				["assets", _, "textures", ..] => kind == ResourceKind::Texture,
+				_ => false,
+			}
+		});
+		files
 	}
 
 	#[rustfmt::skip]
