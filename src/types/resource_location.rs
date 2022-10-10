@@ -1,4 +1,9 @@
-use std::{fmt::{Display, Debug}, path::{PathBuf, Path}, cell::RefCell};
+use std::cell::RefCell;
+use std::fmt::{Debug, Display};
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
+use serde_json::value::Value as JsonValue;
 
 use super::IString;
 
@@ -17,7 +22,7 @@ impl ResourceKind {
 			Self::Texture => "textures",
 		}
 	}
-	
+
 	pub fn extension(self) -> &'static str {
 		match self {
 			Self::BlockState => "json",
@@ -28,17 +33,18 @@ impl ResourceKind {
 }
 
 impl From<&str> for ResourceKind {
-    fn from(str: &str) -> Self {
+	fn from(str: &str) -> Self {
 		match str {
 			"blockstates" => Self::BlockState,
 			"models" => Self::Model,
 			"textures" => Self::Texture,
 			_ => panic!("Unknown resource kind `{str}`"),
 		}
-    }
+	}
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[serde(from = "&str")]
 pub struct ResourceLocation {
 	pub modid: IString,
 	pub name: IString,
@@ -47,11 +53,11 @@ pub struct ResourceLocation {
 impl ResourceLocation {
 	pub fn new(modid: &str, name: &str) -> Self {
 		Self {
-			modid: to_lowercase_istring(modid),
-			name: to_lowercase_istring(name),
+			modid: IString::lowercased(modid),
+			name: IString::lowercased(name),
 		}
 	}
-	
+
 	pub fn from_path(path: &Path) -> (Self, ResourceKind) {
 		// assets/{modid}/{kind}/{path}
 		let modid = path
@@ -83,12 +89,12 @@ impl ResourceLocation {
 			.replace(std::path::MAIN_SEPARATOR, "/");
 		(Self::new(modid, &path), kind)
 	}
-	
+
 	pub fn into_path(self, kind: ResourceKind) -> PathBuf {
-		let ResourceLocation { modid, name } = self;
+		let Self { modid, name } = self;
 		let (prefix, extension) = (kind.path_prefix(), kind.extension());
 		format!("assets/{modid}/{prefix}/{name}.{extension}").into()
-    }
+	}
 }
 
 impl From<&str> for ResourceLocation {
@@ -98,40 +104,49 @@ impl From<&str> for ResourceLocation {
 		} else {
 			Self {
 				modid: IString::from_static("minecraft"),
-				name: to_lowercase_istring(combined),
+				name: IString::lowercased(combined),
 			}
 		}
 	}
 }
 
+#[cfg(none)]
+impl From<JsonValue> for ResourceLocation {
+	fn from(v: JsonValue) -> Self {
+		let str = v.as_str().expect(&format!(
+			"parsing ResourceLocation from JSON string but instead got `{v:?}`"
+		));
+		Self::from(str)
+	}
+}
+
 impl From<ResourceLocation> for String {
-    fn from(loc: ResourceLocation) -> Self {
-        format!("{}", loc)
-    }
+	fn from(loc: ResourceLocation) -> Self {
+		format!("{}", loc)
+	}
 }
 
 impl Display for ResourceLocation {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str(&format!("{}:{}", self.modid, self.name))
+		f.write_fmt(format_args!("{}:{}", self.modid, self.name))
 	}
 }
 
 impl Debug for ResourceLocation {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		<Self as Display>::fmt(self, f)
+		Display::fmt(self, f)
 	}
 }
 
-thread_local! {
-	static lowercaseBuffer: RefCell<String> = RefCell::new(String::new());
-}
-
-fn to_lowercase_istring(str: &str) -> IString {
-	lowercaseBuffer.with(|cell| {
-		let mut buffer = cell.borrow_mut();
-		buffer.clear();
-		buffer.push_str(str);
-		buffer.make_ascii_lowercase();
-		buffer.as_str().into()
-	})
+#[cfg(none)]
+impl<'de> Deserialize<'de> for ResourceLocation {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let vis = StringVisitor::new();
+		Ok(ResourceLocation::from(
+			deserializer.deserialize_str(vis)?.as_str(),
+		))
+	}
 }

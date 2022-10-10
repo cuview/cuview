@@ -23,7 +23,7 @@ impl WorldLoader for Loader {
 		id: ResourceLocation,
 	) -> Shared<world::Dimension> {
 		// FIXME: move somewhere shared probably
-		let dimDir = match (&*id.modid, &*id.name) {
+		let dimDir = match (id.modid.as_str(), id.name.as_str()) {
 			("minecraft", "overworld") => ".",
 			("minecraft", "the_end") => "DIM1",
 			("minecraft", "the_nether") => "DIM-1",

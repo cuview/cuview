@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::iter::FusedIterator;
 use std::path::{Path, PathBuf};
 
 use glam::Vec3;
@@ -9,8 +10,8 @@ use serde_json::Value as JsonValue;
 use crate::jarfs::JarFS;
 use crate::renderer::model::Direction;
 use crate::types::blockstate::BlockState;
-use crate::types::ResourceLocation;
 use crate::types::resource_location::ResourceKind;
+use crate::types::{IString, ResourceLocation};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
@@ -19,21 +20,69 @@ pub enum OneOrMany<T> {
 	Many(Vec<T>),
 }
 
-struct StringVisitor(String);
+impl<T> OneOrMany<T> {
+	pub fn iter(&self) -> impl FusedIterator<Item = &T> {
+		struct Iter<'a, T> {
+			this: &'a OneOrMany<T>,
+			index: usize,
+		}
 
-impl<'de> Visitor<'de> for StringVisitor {
-	type Value = String;
+		impl<'a, T> Iterator for Iter<'a, T> {
+			type Item = &'a T;
 
-	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-		write!(formatter, "a string")
+			fn next(&mut self) -> Option<Self::Item> {
+				match self.this {
+					OneOrMany::One(x) => {
+						if self.index == 0 {
+							self.index += 1;
+							Some(x)
+						} else {
+							None
+						}
+					},
+					OneOrMany::Many(xs) => {
+						if self.index < xs.len() {
+							let res = Some(&xs[self.index]);
+							self.index += 1;
+							res
+						} else {
+							None
+						}
+					},
+				}
+			}
+
+			fn size_hint(&self) -> (usize, Option<usize>) {
+				let len = match self.this {
+					OneOrMany::One(_) => 1 - self.index,
+					OneOrMany::Many(xs) => xs.len() - self.index,
+				};
+				(len, Some(len))
+			}
+		}
+
+		impl<'a, T> FusedIterator for Iter<'a, T> {}
+
+		Iter {
+			this: self,
+			index: 0,
+		}
 	}
+}
 
-	fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-	where
-		E: serde::de::Error,
-	{
-		Ok(v.to_owned())
-	}
+#[test]
+fn test_oneormany() {
+	let x = OneOrMany::One(0);
+	assert!(x.iter().cloned().collect::<Vec<_>>() == vec![0]);
+	let x = OneOrMany::Many(vec![0, 1]);
+	assert!(x.iter().cloned().collect::<Vec<_>>() == vec![0, 1]);
+
+	let mut it = x.iter();
+	assert!(it.size_hint() == (2, Some(2)));
+	it.next().unwrap();
+	assert!(it.size_hint() == (1, Some(1)));
+	it.next().unwrap();
+	assert!(it.size_hint() == (0, Some(0)));
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -52,30 +101,31 @@ pub struct Multipart {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(from = "serde_json::Value")]
-pub struct MultipartProp(Vec<String>);
+pub struct MultipartProp(pub Vec<String>);
 
 impl From<JsonValue> for MultipartProp {
 	fn from(v: JsonValue) -> Self {
-		Self(v.to_string().split("|").map(ToOwned::to_owned).collect())
+		let str = v.as_str().unwrap();
+		Self(str.split("|").map(ToOwned::to_owned).collect())
 	}
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct MultipartProps(HashMap<String, MultipartProp>);
+pub struct MultipartCase(pub HashMap<String, MultipartProp>);
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum MultipartWhen {
 	Or {
 		#[serde(rename = "OR")]
-		or: Vec<MultipartProps>,
+		or: Vec<MultipartCase>,
 	},
-	And(MultipartProps),
+	And(MultipartCase),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub struct BlockStateModel {
-	pub model: String,
+	pub model: ResourceLocation,
 
 	#[serde(rename = "x")]
 	pub xRotation: Option<f32>,
@@ -90,14 +140,14 @@ pub struct BlockStateModel {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct JsonModel {
-	pub parent: Option<String>,
+	pub parent: Option<ResourceLocation>,
 
-	pub textures: Option<HashMap<String, String>>,
+	pub textures: Option<HashMap<IString, String>>,
 
 	pub elements: Option<Vec<Element>>,
 	// TODO
 	// pub ambientocclusion: bool;
-	// pub display: HashMap<Display, DisplayPosition>;
+	// pub display: HashMap<Display, DisplayTransform>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -194,21 +244,16 @@ impl ModelCache {
 
 			for loc in remaining.iter().cloned().filter(|loc| {
 				let json = self.jsons.get(loc).unwrap();
-				if let Some(parent) = json.parent.as_ref() {
+				if let Some(parent) = json.parent {
 					// models with a parent must be deferred until that parent has been merged
-					self.merged
-						.contains_key(&ResourceLocation::from(parent.as_str()))
+					self.merged.contains_key(&parent)
 				} else {
 					// models without parents can be immediately "merged"
 					true
 				}
 			}) {
 				let json = self.jsons.get(&loc).unwrap();
-				let parent = json
-					.parent
-					.as_ref()
-					.map(|p| self.merged.get(&ResourceLocation::from(p.as_str())))
-					.flatten();
+				let parent = json.parent.map(|p| self.merged.get(&p)).flatten();
 				let mut model = MergedModel {
 					elements: json
 						.elements
@@ -242,7 +287,7 @@ impl ModelCache {
 
 #[derive(Clone, Debug)]
 pub struct MergedModel {
-	pub textures: HashMap<String, String>,
+	pub textures: HashMap<IString, String>,
 	pub elements: Vec<Element>,
 }
 

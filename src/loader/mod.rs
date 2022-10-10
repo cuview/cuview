@@ -6,6 +6,7 @@ use crate::types::shared::Shared;
 use crate::types::{ChunkPos, RegionPos, ResourceLocation};
 use crate::world::{Chunk, Dimension, Region, World};
 
+pub mod blockstate;
 pub mod common;
 pub mod mc1_18;
 pub mod model;

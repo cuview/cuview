@@ -1,18 +1,39 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Display};
 use std::ptr::eq as ptr_eq;
+use std::str::FromStr;
 use std::sync::RwLock;
 
-#[derive(Clone, Copy, Eq, Hash)]
+use serde::de::{DeserializeOwned, Visitor};
+use serde::Deserialize;
+
+use crate::JsonValue;
+
+#[derive(Clone, Copy, Eq, Hash, PartialOrd, Ord)]
 pub struct IString(&'static str);
 
 lazy_static::lazy_static! {
 	static ref internedStrings: RwLock<HashSet<&'static str>> = RwLock::new(HashSet::new());
 }
 
+thread_local! {
+	static lowercaseBuffer: RefCell<String> = RefCell::new(String::new());
+}
+
 impl IString {
 	pub fn from_static(str: &'static str) -> Self {
 		Self::get_or_insert(StrSrc::Static(str))
+	}
+
+	pub fn lowercased(str: &str) -> Self {
+		lowercaseBuffer.with(|cell| {
+			let mut buffer = cell.borrow_mut();
+			buffer.clear();
+			buffer.push_str(str);
+			buffer.make_ascii_lowercase();
+			buffer.as_str().into()
+		})
 	}
 
 	fn get_or_insert(str: StrSrc) -> Self {
@@ -31,6 +52,10 @@ impl IString {
 		set.insert(new);
 		Self(new)
 	}
+
+	pub fn as_str(&self) -> &'static str {
+		self.0
+	}
 }
 
 impl From<&str> for IString {
@@ -48,7 +73,7 @@ impl From<String> for IString {
 impl std::ops::Deref for IString {
 	type Target = str;
 
-	fn deref(&self) -> &Self::Target {
+	fn deref(&self) -> &'static Self::Target {
 		self.0
 	}
 }
@@ -67,8 +92,34 @@ impl Display for IString {
 
 impl Debug for IString {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{:?}", self.0)?;
-		Ok(())
+		write!(f, "{:?}", self.0)
+	}
+}
+
+struct IStrVisitor;
+
+impl<'de> Visitor<'de> for IStrVisitor {
+	type Value = IString;
+
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(formatter, "a string")
+	}
+
+	fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+	where
+		E: serde::de::Error,
+	{
+		Ok(IString::lowercased(v))
+	}
+}
+
+// derive macro infers wrong lifetimes :(
+impl<'de> Deserialize<'de> for IString {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		deserializer.deserialize_str(IStrVisitor)
 	}
 }
 
@@ -89,7 +140,7 @@ fn test_istring() {
 	assert!(ptr_eq(str1.0, str3.0));
 
 	let owned = String::from("istr_test_baz");
-	let ptr = &*owned as *const str;
+	let ptr = owned.as_str() as *const str;
 	let str1: IString = owned.into();
 	assert!(ptr_eq(ptr, str1.0));
 }

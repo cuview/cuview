@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::hash::Hash;
 
-use glam::{Vec3, Vec2};
+use glam::{Vec2, Vec3};
 use serde::Deserialize;
 
 use crate::loader::model::MergedModel;
@@ -26,9 +26,9 @@ pub enum Direction {
 }
 
 #[derive(Clone, Copy)]
-pub struct Cube {
-	pub mins: Vec3,
-	pub maxs: Vec3,
+struct Cube {
+	mins: Vec3,
+	maxs: Vec3,
 }
 
 impl Cube {
@@ -200,20 +200,20 @@ impl Cube {
 }
 
 #[derive(Clone, Copy)]
-pub struct Vertex {
-	pub pos: [f32; 3],
-	pub uv: [f32; 2],
+struct Vertex {
+	pos: [f32; 3],
+	uv: [f32; 2],
 }
 
 #[derive(Clone, Copy)]
-pub struct Face {
-	pub verts: [Vertex; 4],
-	pub texture: IString,
+struct Face {
+	verts: [Vertex; 4],
+	texture: IString,
 }
 
 pub struct Model {
-	pub faces: Vec<Face>,
-	pub textures: HashMap<IString, ResourceLocation>,
+	faces: Vec<Face>,
+	textures: HashMap<IString, ResourceLocation>,
 }
 
 impl Model {

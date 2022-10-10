@@ -7,7 +7,7 @@ use std::sync::{Arc, Weak};
 use std::{fmt, io};
 
 use crate::loader::common::AnvilRegion;
-use crate::types::blockstate::BlockState;
+use crate::types::blockstate::{BlockState, BlockStateBuilder};
 use crate::types::coords::{ChunkPos, RegionPos};
 use crate::types::shared::{Shared, WeakShared};
 use crate::types::ResourceLocation;
@@ -393,24 +393,26 @@ fn test_palette() {
 	let mut p = Palette::new();
 	assert!(p.bits() == 0);
 
-	let state = BlockState::new("0".into());
-	p.define(0, state);
-	assert!(p.get_id(state).unwrap_or(u32::MAX) == 0);
-	assert!(p.get_state(0).unwrap_or(BlockState::new("nil".into())) == state);
+	let nil = BlockState::stateless("nil".into());
+	let air = BlockState::stateless("air".into());
+	p.define(0, air);
+	assert!(p.get_id(air).unwrap_or(u32::MAX) == 0);
+	assert!(p.get_state(0).unwrap_or(nil) == air);
 	assert!(p.bits() == 4);
 
 	for i in 1 ..= 16 {
-		p.define(i, BlockState::new(i.to_string().as_str().into()));
+		p.define(i, BlockState::stateless(i.to_string().as_str().into()));
 	}
 	assert!(p.bits() == 5);
 
+	// TODO: registry overrides/aliases/etc.
 	use std::panic::catch_unwind;
 	{
 		let mut p = p.clone();
-		catch_unwind(move || p.define(0, BlockState::new("nil".into()))).unwrap_err();
+		catch_unwind(move || p.define(0, nil)).unwrap_err();
 	}
 	{
 		let mut p = p.clone();
-		catch_unwind(move || p.define(64, state)).unwrap_err();
+		catch_unwind(move || p.define(64, air)).unwrap_err();
 	}
 }

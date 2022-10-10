@@ -1,94 +1,256 @@
 #![allow(non_snake_case, unused)]
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::exit;
 
+use blockstate::BlockStates;
 use cuview::loader::common::AnvilRegion;
-use cuview::loader::model::{Element, Face as JsonFace, JsonModel, MergedModel, ModelCache};
-use cuview::loader::*;
-use cuview::renderer::model::{Cube, Direction, Face, Model, Vertex};
-use cuview::types::blockstate::BlockState;
+use cuview::loader::model::{
+	Element,
+	Face as JsonFace,
+	JsonBlockState,
+	JsonModel,
+	MergedModel,
+	ModelCache,
+};
+use cuview::loader::{self, *};
+use cuview::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
+use cuview::types::resource_location::ResourceKind;
 use cuview::types::{BlockPos, ChunkPos, IString, RegionPos, ResourceLocation};
 use cuview::world::Palette;
 use glam::Vec3;
+use loader::model::{BlockStateModel, MultipartCase, OneOrMany};
+use model::MultipartWhen;
 
-#[cfg(none)]
 fn main() {
-	/* let mut diagonal = Model::new(None);
-	diagonal.textures.insert("tex".into(), ResourceLocation::from("cuview:test"));
-	diagonal.faces.push(Face {
-		texture: "tex".into(),
-		verts: [
-			Vertex {
-				pos: [1.0, 1.0, 1.0],
-				uv: [0.0, 0.0],
-			},
-			Vertex {
-				pos: [0.0, 1.0, 1.0],
-				uv: [0.0, 0.0],
-			},
-			Vertex {
-				pos: [1.0, 0.0, 0.0],
-				uv: [0.0, 0.0],
-			},
-			Vertex {
-				pos: [0.0, 0.0, 0.0],
-				uv: [0.0, 0.0],
-			},
-		]
-	}); */
+	let fs = cuview::jarfs::JarFS::new(vec![
+		Path::new("client-1.18.2.jar"),
+		// Path::new("snad.jar"),
+	])
+	.unwrap();
 
-	/*let cube = Cube::new(Vec3::splat(-0.5), Vec3::splat(0.5));
-	let mut test = Model::new(None);
-	for dir in { use Direction::*; [Up, Down, North, East, South, West] } {
-		let tex = format!("{dir:?}").into();
-		test.textures.insert(tex, ResourceLocation::from(format!("cuview:test_{dir:?}").as_str()));
-		test.faces.push(Face {
-			texture: tex,
-			verts: cube.vertices(dir),
-		});
-	}*/
+	let mut blockstates: blockstate::BlockStates =
+		serde_json::from_str(&std::fs::read_to_string("blockstates.json").unwrap()).unwrap();
+	/* dbg!(
+		&blockstates
+			.0
+			.get(&"redstone_wire".into())
+			.unwrap()
+			.properties
+	); */
+	// blockstates.0.retain(|&k, _| k.name.as_str() == "sandstone_wall");
+	/* let k = blockstates.0.keys().copied().next().unwrap();
+	blockstates.0.get_mut(&k).unwrap().states.truncate(1); */
+	#[cfg(none)]
+	blockstates.0.insert(
+		"cuview:test".into(),
+		blockstate::BlockDefinition {
+			properties: None,
+			states: vec![blockstate::State {
+				properties: None,
+				id: u32::MAX,
+				default: true,
+			}],
+		},
+	);
+	let blockstates = BlockStateCache::from_json(blockstates);
 
-	let mut raw = MergedModel::new();
-	raw.textures.insert("foo".into(), "cuview:foo".into());
-	raw.elements.push(Element {
-		from: [0.0, 0.0, 0.0],
-		to: [16.0, 16.0, 16.0],
-		faces: [
-			// #[cfg(none)]
-			(
-				Direction::Up,
-				JsonFace {
-					texture: "foo".into(),
-					..Default::default()
+	let mut blockstateJsons = HashMap::new();
+	for block in blockstates.blocks() {
+		let path = block.into_path(ResourceKind::BlockState);
+		let json = fs.read_text(&path);
+		if json.is_err() {
+			eprintln!("Warning: no blockstate json for {block}");
+			continue;
+		}
+		let json: JsonBlockState = serde_json::from_str(&json.unwrap())
+			.expect(&format!("Malformed blockstate json for {block}"));
+		blockstateJsons.insert(block, json);
+	}
+
+	let missing = BlockStateModel {
+		model: "cuview:missing".into(),
+		xRotation: None,
+		yRotation: None,
+		uvlock: None,
+		weight: None,
+	};
+	let mut modelForState = HashMap::new();
+	// #[cfg(none)]
+	for state in blockstates.states() {
+		let block = state.block_name();
+		let mut models = vec![];
+		let json = blockstateJsons.get(&block);
+
+		if let Some(json) = json {
+			match json {
+				JsonBlockState::Variants(map) => {
+					if map.contains_key("") {
+						assert!(
+							map.len() == 1,
+							"variants-style stateless property found among other properties in \
+							 blockstate JSON for {block}"
+						);
+						models.extend(map.get("").unwrap().iter());
+					} else {
+						for (stateStr, stateModels) in map {
+							let partialState =
+								BlockStateBuilder::from_variants_model(block, stateStr.as_str());
+							if partialState.keys().all(|key| {
+								state.get_property(key) == partialState.get_property(key)
+							}) {
+								models.extend(stateModels.iter());
+								break;
+							}
+						}
+					}
 				},
-			),
-			// #[cfg(none)]
-			(
-				Direction::Down,
-				JsonFace {
-					texture: "foo".into(),
-					..Default::default()
-				},
-			),
-		]
-		.into(),
-		shade: true,
-		rotation: None,
-	});
+				JsonBlockState::Multipart(parts) => {
+					let case_matches = |case: &MultipartCase| -> bool {
+						for (k, vs) in &case.0 {
+							let expected = state.get_property(&k).expect(&format!(
+								"Blockstate JSON for {block} matches on property `{k}` which is \
+								 not defined in blockstate dump"
+							));
+							if vs.0.iter().all(|v| v != expected) {
+								return false;
+							}
+						}
 
-	let test = Model::bake(&raw);
-	dbg!(test.faces.len());
-	let (obj, mtl) = Model::into_wavefront(&[("test", test)], "test.mtl");
-	std::fs::write("out/test.obj", obj);
-	std::fs::write("out/test.mtl", mtl);
+						true
+					};
+
+					for part in parts {
+						let mut matches = true;
+						if let Some(when) = &part.when {
+							match when {
+								MultipartWhen::And(case) => {
+									/* for (key, values) in &props.0 {
+										matches &= values.0.iter().any(|v| {
+											v.to_lowercase() == state.get_property(key).expect(&format!(
+												"Blockstate JSON for {block} matches on property \
+												`{key}` which is not defined in blockstate dump"
+											))
+										});
+										if !matches { break; }
+									} */
+									matches = case_matches(case);
+								},
+								MultipartWhen::Or { or: cases } => {
+									matches = false;
+									for case in cases {
+										/* let mut submatch = false;
+										for (key, values) in &case.0 {
+											submatch |= values.0.iter().any(|v| {
+												v.to_lowercase() == state.get_property(key).expect(&format!(
+													"Blockstate JSON for {block} matches on property \
+													`{key}` which is not defined in blockstate dump"
+												))
+											});
+											if submatch { break; }
+										}
+										if submatch { break; } */
+										matches |= case_matches(case);
+										if matches {
+											break;
+										}
+									}
+								},
+							}
+						}
+
+						if matches {
+							models.extend(part.apply.iter().copied());
+						}
+					}
+				},
+			}
+		}
+
+		if models.len() == 0 || json.is_none() {
+			if json.is_some() {
+				eprintln!("Blockstate JSON has no mapping for state {state}");
+			}
+			models.push(missing);
+		}
+		modelForState.insert(state, models);
+	}
+
+	// dbg!(modelForState);
+
+	// let files = fs.files(ResourceKind::BlockState);
+	// let mut modelForState = HashMap::new();
+	#[cfg(none)]
+	for path in files.into_iter() {
+		let (block, _) = ResourceLocation::from_path(&path);
+		let json: JsonBlockState = serde_json::from_str(&fs.read_text(&path).unwrap()).unwrap();
+		match &json {
+			JsonBlockState::Variants(map) => {
+				let mut hasStateless = false;
+				for (i, props) in map.keys().enumerate() {
+					assert!(
+						!hasStateless,
+						"stateless property among other properties in blockstate {block}"
+					);
+					let state = if props.len() > 0 {
+						BlockStateBuilder::from_variants_model(block, props).build()
+					} else {
+						assert!(
+							i == 0,
+							"stateless property among other properties in blockstate {block}"
+						);
+						hasStateless = true;
+						BlockState::stateless(block)
+					};
+				}
+			},
+			JsonBlockState::Multipart(parts) => {
+				let mut states: HashMap<&str, Vec<&str>> = HashMap::new();
+				for part in parts {
+					if part.when.is_none() {
+						continue;
+					}
+					match part.when.as_ref().unwrap() {
+						MultipartWhen::And(props) => {
+							for (key, values) in &props.0 {
+								if !states.contains_key(key.as_str()) {
+									states.insert(key, Vec::with_capacity(16));
+								}
+								states
+									.get_mut(key.as_str())
+									.unwrap()
+									.extend(values.0.iter().map(|v| v.as_str()));
+							}
+						},
+						MultipartWhen::Or { or: props } => {
+							todo!("multipart OR on {block}");
+						},
+					}
+				}
+
+				dbg!(&states);
+				let states: Vec<_> = states
+					.into_iter()
+					.flat_map(|(k, vs)| vs.into_iter().map(move |v| (k, v)))
+					.collect();
+				dbg!(&states);
+				todo!("{block}");
+				/* for (k, vs) in states {
+					for v in vs {
+						let mut state = BlockStateBuilder::new(loc);
+						states.push(state.build());
+					}
+				} */
+			},
+		}
+	}
 }
 
-// #[cfg(none)]
+#[cfg(none)]
 fn main() {
 	let fs = cuview::jarfs::JarFS::new(vec![
 		Path::new("client-1.18.2.jar"),
@@ -125,7 +287,7 @@ fn main() {
 		for face in &mut model.faces {
 			for vert in &mut face.verts {
 				vert.pos = [
-					vert.pos[0] + modelIndex as f32,
+					vert.pos[0] + modelIndex as f32 * 1.1,
 					vert.pos[1],
 					vert.pos[2],
 				];
@@ -137,45 +299,6 @@ fn main() {
 	let (obj, mtl) = Model::into_wavefront(baked.as_slice(), "interesting.mtl");
 	std::fs::write("out/interesting.obj", obj).unwrap();
 	std::fs::write("out/interesting.mtl", mtl).unwrap();
-
-	/* let files = fs.all_files();
-	let mc = files
-		.iter()
-		.filter(|v| v.starts_with("assets/minecraft/blockstates"))
-		.count();
-	let snad = files
-		.iter()
-		.filter(|v| v.starts_with("assets/snad/blockstates"))
-		.count(); */
-	/* let owo = files
-	.iter()
-	.filter(|&v| {
-		if let Ok(dirs) = <Vec<_> as TryInto<[&str; 4]>>::try_into(v.splitn(4, "/").collect()) {
-			match dirs {
-				["assets", _, "blockstates", _] => true,
-				_ => false,
-			}
-		} else {
-			false
-		}
-	})
-	// .take(5)
-	.count(); */
-	/*let owo = files
-		.iter()
-		.filter(|&v| {
-			let components: Vec<_> = v
-				.components()
-				.map(|v| v.as_os_str().to_str().unwrap())
-				.collect();
-			match components.as_slice() {
-				["assets", _, "blockstates", ..] => true,
-				_ => false,
-			}
-		})
-		// .take(5)
-		.count();
-	eprintln!("{mc}\n{snad}\n{owo}");*/
 }
 
 #[cfg(none)]
@@ -255,8 +378,8 @@ fn main() {
 	// #[cfg(none)]
 	{
 		let air = BlockState::new(ResourceLocation::new(
-			&*IString::from_static("minecraft"),
-			&*IString::from_static("air"),
+			IString::from_static("minecraft").as_str(),
+			IString::from_static("air").as_str(),
 		));
 		// let targetBlock = BlockPos::new(0, -60, 0);
 		let targetBlock = BlockPos::new(13 * 16, -60, 13 * 16);
