@@ -78,6 +78,12 @@ impl std::ops::Deref for IString {
 	}
 }
 
+impl std::borrow::Borrow<str> for IString {
+    fn borrow(&self) -> &'static str {
+        self.0
+    }
+}
+
 impl PartialEq for IString {
 	fn eq(&self, other: &Self) -> bool {
 		ptr_eq(self.0, other.0)

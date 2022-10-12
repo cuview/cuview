@@ -14,19 +14,18 @@ use cuview::loader::model::{
 	Face as JsonFace,
 	JsonBlockState,
 	JsonModel,
-	MergedModel,
-	ModelCache,
 };
 use cuview::loader::{self, *};
-use cuview::renderer::model::models_for_states;
+use cuview::renderer::model::{models_for_states, ModelCache, Model};
 use cuview::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
 use cuview::types::resource_location::ResourceKind;
 use cuview::types::{BlockPos, ChunkPos, IString, RegionPos, ResourceLocation};
 use cuview::world::Palette;
-use glam::Vec3;
+use glam::{Vec3, Mat4, vec3};
 use loader::model::{BlockStateModel, MultipartCase, OneOrMany};
 use model::MultipartWhen;
 
+#[cfg(none)]
 fn main() {
 	let fs = cuview::jarfs::JarFS::new(vec![
 		Path::new("client-1.18.2.jar"),
@@ -73,22 +72,14 @@ fn main() {
 	dbg!(test3, modelsForState.get(&test3));
 }
 
-#[cfg(none)]
+// #[cfg(none)]
 fn main() {
 	let fs = cuview::jarfs::JarFS::new(vec![
 		Path::new("client-1.18.2.jar"),
 		// Path::new("snad.jar"),
 	])
 	.unwrap();
-
-	let mut cache = ModelCache::new();
-	cache.load_jsons(&fs);
-	dbg!(cache.jsons.len());
-	cache.merge_jsons();
-	dbg!(cache.merged.len());
-	// dbg!(cache.merged.keys().filter(|&&k|
-	// k.name.contains("fence_post")).collect::<Vec<_>>()); dbg!(cache.
-	// get_model(ResourceLocation::from("block/stone_slab_top")));
+	let mut modelCache = ModelCache::from_jsons(&fs);
 
 	let interestingModels = [
 		"block/cactus",
@@ -102,24 +93,15 @@ fn main() {
 		"block/stairs",
 		"block/stonecutter",
 	];
-	let mut baked = Vec::with_capacity(interestingModels.len());
+	let mut xformed = Vec::with_capacity(interestingModels.len());
 	for (modelIndex, modelPath) in interestingModels.iter().cloned().enumerate() {
 		let loc = ResourceLocation::from(modelPath);
-		let raw = cache.get_model(loc).expect(&format!("{modelPath}"));
-		let mut model = Model::bake(raw);
-		for face in &mut model.faces {
-			for vert in &mut face.verts {
-				vert.pos = [
-					vert.pos[0] + modelIndex as f32 * 1.1,
-					vert.pos[1],
-					vert.pos[2],
-				];
-			}
-		}
-		baked.push((modelPath, model));
+		let mat = Mat4::from_translation(vec3(modelIndex as f32, 0.0, 0.0));
+		let model = modelCache.get(&loc).expect(&format!("{modelPath}")).transformed(&modelCache, mat);
+		xformed.push((modelPath, model));
 	}
 
-	let (obj, mtl) = Model::into_wavefront(baked.as_slice(), "interesting.mtl");
+	let (obj, mtl) = Model::into_wavefront(&modelCache, xformed.as_slice(), "interesting.mtl");
 	std::fs::write("out/interesting.obj", obj).unwrap();
 	std::fs::write("out/interesting.mtl", mtl).unwrap();
 }
