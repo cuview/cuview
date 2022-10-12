@@ -5,7 +5,10 @@ use std::hash::Hash;
 use glam::{Vec2, Vec3};
 use serde::Deserialize;
 
-use crate::loader::model::MergedModel;
+use crate::jarfs::JarFS;
+use crate::loader::model::{MergedModel, BlockStateModel, JsonBlockState, MultipartCase, MultipartWhen};
+use crate::types::blockstate::{BlockStateCache, BlockStateBuilder, BlockState};
+use crate::types::resource_location::ResourceKind;
 use crate::types::{IString, ResourceLocation};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -345,4 +348,108 @@ impl Model {
 
 		(obj, mtl)
 	}
+}
+
+pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<BlockState, Vec<BlockStateModel>> {
+	let mut blockstateJsons = HashMap::new();
+	for block in blockstates.blocks() {
+		let path = block.into_path(ResourceKind::BlockState);
+		let json = fs.read_text(&path);
+		if json.is_err() {
+			eprintln!("Warning: no blockstate json for {block}");
+			continue;
+		}
+		let json: JsonBlockState = serde_json::from_str(&json.unwrap())
+			.expect(&format!("Malformed blockstate json for {block}"));
+		blockstateJsons.insert(block, json);
+	}
+	
+	let missing = BlockStateModel {
+		model: "cuview:missing".into(),
+		xRotation: None,
+		yRotation: None,
+		uvlock: None,
+		weight: None,
+	};
+	let mut modelForState = HashMap::new();
+	for state in blockstates.states() {
+		let block = state.block_name();
+		let mut models = vec![];
+		let json = blockstateJsons.get(&block);
+
+		if let Some(json) = json {
+			match json {
+				JsonBlockState::Variants(map) => {
+					if map.contains_key("") {
+						assert!(
+							map.len() == 1,
+							"variants-style stateless property found among other properties in \
+							 blockstate JSON for {block}"
+						);
+						models.extend(map.get("").unwrap().iter());
+					} else {
+						for (stateStr, stateModels) in map {
+							let partialState =
+								BlockStateBuilder::from_variants_model(block, stateStr.as_str());
+							if partialState.keys().all(|key| {
+								state.get_property(key) == partialState.get_property(key)
+							}) {
+								models.extend(stateModels.iter());
+								break;
+							}
+						}
+					}
+				},
+				JsonBlockState::Multipart(parts) => {
+					let case_matches = |case: &MultipartCase| -> bool {
+						for (k, vs) in &case.0 {
+							let expected = state.get_property(&k).expect(&format!(
+								"Blockstate JSON for {block} matches on property `{k}` which is \
+								 not defined in blockstate dump"
+							));
+							if vs.0.iter().all(|v| v != expected) {
+								return false;
+							}
+						}
+
+						true
+					};
+
+					for part in parts {
+						let mut matches = true;
+						if let Some(when) = &part.when {
+							match when {
+								MultipartWhen::And(case) => {
+									matches = case_matches(case);
+								},
+								MultipartWhen::Or { or: cases } => {
+									matches = false;
+									for case in cases {
+										matches |= case_matches(case);
+										if matches {
+											break;
+										}
+									}
+								},
+							}
+						}
+
+						if matches {
+							models.extend(part.apply.iter().copied());
+						}
+					}
+				},
+			}
+		}
+
+		if models.len() == 0 || json.is_none() {
+			if json.is_some() {
+				eprintln!("Blockstate JSON has no mapping for state {state}");
+			}
+			models.push(missing);
+		}
+		modelForState.insert(state, models);
+	}
+	
+	modelForState
 }

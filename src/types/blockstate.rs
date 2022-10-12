@@ -153,8 +153,10 @@ impl BlockStateCache {
 	}
 
 	pub fn from_json(states: BlockStates) -> Self {
-		let mut this = Self::new();
+		let mut res = HashMap::with_capacity(states.0.len());
 		for (block, def) in states.0 {
+			assert!(res.insert(block, vec![]).is_none());
+			
 			for state in def.states {
 				let State {
 					properties,
@@ -167,24 +169,17 @@ impl BlockStateCache {
 						builder.set_property(&k, &v);
 					}
 				}
-				this.define(builder.build(), default);
+				
+				let state = builder.build();
+				let vec = res.get_mut(&block).unwrap();
+				if default {
+					vec.insert(0, state);
+				} else {
+					vec.push(state);
+				}
 			}
 		}
-		this
-	}
-
-	pub fn define(&mut self, state: BlockState, isDefault: bool) {
-		let loc = state.block;
-		if !self.0.contains_key(&loc) {
-			self.0.insert(loc, vec![state]);
-		} else {
-			let vec = self.0.get_mut(&loc).unwrap();
-			if isDefault {
-				vec.insert(0, state);
-			} else {
-				vec.push(state);
-			}
-		}
+		Self(res)
 	}
 
 	pub fn blocks(&self) -> impl '_ + Iterator<Item = ResourceLocation> {
@@ -192,14 +187,14 @@ impl BlockStateCache {
 	}
 
 	pub fn states(&self) -> impl '_ + Iterator<Item = BlockState> {
-		self.0.values().flat_map(|xs| xs).copied()
+		self.0.values().flat_map(Vec::as_slice).copied()
 	}
 
 	pub fn states_of(&self, block: ResourceLocation) -> Option<&[BlockState]> {
 		self.0.get(&block).map(Vec::as_slice)
 	}
 
-	pub fn default_state(&self, block: ResourceLocation) -> Option<BlockState> {
+	pub fn default_state_of(&self, block: ResourceLocation) -> Option<BlockState> {
 		self.0.get(&block).and_then(|xs| xs.first()).copied()
 	}
 }

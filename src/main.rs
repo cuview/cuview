@@ -18,6 +18,7 @@ use cuview::loader::model::{
 	ModelCache,
 };
 use cuview::loader::{self, *};
+use cuview::renderer::model::models_for_states;
 use cuview::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
 use cuview::types::resource_location::ResourceKind;
 use cuview::types::{BlockPos, ChunkPos, IString, RegionPos, ResourceLocation};
@@ -59,126 +60,10 @@ fn main() {
 	);
 	let blockstates = BlockStateCache::from_json(blockstates);
 
-	let mut blockstateJsons = HashMap::new();
-	for block in blockstates.blocks() {
-		let path = block.into_path(ResourceKind::BlockState);
-		let json = fs.read_text(&path);
-		if json.is_err() {
-			eprintln!("Warning: no blockstate json for {block}");
-			continue;
-		}
-		let json: JsonBlockState = serde_json::from_str(&json.unwrap())
-			.expect(&format!("Malformed blockstate json for {block}"));
-		blockstateJsons.insert(block, json);
-	}
-
-	let missing = BlockStateModel {
-		model: "cuview:missing".into(),
-		xRotation: None,
-		yRotation: None,
-		uvlock: None,
-		weight: None,
-	};
-	let mut modelForState = HashMap::new();
-	// #[cfg(none)]
-	for state in blockstates.states() {
-		let block = state.block_name();
-		let mut models = vec![];
-		let json = blockstateJsons.get(&block);
-
-		if let Some(json) = json {
-			match json {
-				JsonBlockState::Variants(map) => {
-					if map.contains_key("") {
-						assert!(
-							map.len() == 1,
-							"variants-style stateless property found among other properties in \
-							 blockstate JSON for {block}"
-						);
-						models.extend(map.get("").unwrap().iter());
-					} else {
-						for (stateStr, stateModels) in map {
-							let partialState =
-								BlockStateBuilder::from_variants_model(block, stateStr.as_str());
-							if partialState.keys().all(|key| {
-								state.get_property(key) == partialState.get_property(key)
-							}) {
-								models.extend(stateModels.iter());
-								break;
-							}
-						}
-					}
-				},
-				JsonBlockState::Multipart(parts) => {
-					let case_matches = |case: &MultipartCase| -> bool {
-						for (k, vs) in &case.0 {
-							let expected = state.get_property(&k).expect(&format!(
-								"Blockstate JSON for {block} matches on property `{k}` which is \
-								 not defined in blockstate dump"
-							));
-							if vs.0.iter().all(|v| v != expected) {
-								return false;
-							}
-						}
-
-						true
-					};
-
-					for part in parts {
-						let mut matches = true;
-						if let Some(when) = &part.when {
-							match when {
-								MultipartWhen::And(case) => {
-									/* for (key, values) in &props.0 {
-										matches &= values.0.iter().any(|v| {
-											v.to_lowercase() == state.get_property(key).expect(&format!(
-												"Blockstate JSON for {block} matches on property \
-												`{key}` which is not defined in blockstate dump"
-											))
-										});
-										if !matches { break; }
-									} */
-									matches = case_matches(case);
-								},
-								MultipartWhen::Or { or: cases } => {
-									matches = false;
-									for case in cases {
-										/* let mut submatch = false;
-										for (key, values) in &case.0 {
-											submatch |= values.0.iter().any(|v| {
-												v.to_lowercase() == state.get_property(key).expect(&format!(
-													"Blockstate JSON for {block} matches on property \
-													`{key}` which is not defined in blockstate dump"
-												))
-											});
-											if submatch { break; }
-										}
-										if submatch { break; } */
-										matches |= case_matches(case);
-										if matches {
-											break;
-										}
-									}
-								},
-							}
-						}
-
-						if matches {
-							models.extend(part.apply.iter().copied());
-						}
-					}
-				},
-			}
-		}
-
-		if models.len() == 0 || json.is_none() {
-			if json.is_some() {
-				eprintln!("Blockstate JSON has no mapping for state {state}");
-			}
-			models.push(missing);
-		}
-		modelForState.insert(state, models);
-	}
+	let modelsForState = models_for_states(&fs, &blockstates);
+	// let test = BlockStateBuilder::from_variants_model("cobblestone_wall".into(), "north=low,east=none,south=none,west=none,up=true,waterlogged=false").build();
+	let test = BlockState::stateless("stone".into());
+	dbg!(modelsForState.get(&test));
 
 	// dbg!(modelForState);
 
