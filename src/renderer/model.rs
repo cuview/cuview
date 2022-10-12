@@ -6,8 +6,15 @@ use glam::{Vec2, Vec3};
 use serde::Deserialize;
 
 use crate::jarfs::JarFS;
-use crate::loader::model::{MergedModel, BlockStateModel, JsonBlockState, MultipartCase, MultipartWhen};
-use crate::types::blockstate::{BlockStateCache, BlockStateBuilder, BlockState};
+use crate::loader::model::{
+	BlockStateModel,
+	JsonBlockState,
+	MergedModel,
+	MultipartCase,
+	MultipartWhen,
+	OneOrMany,
+};
+use crate::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
 use crate::types::resource_location::ResourceKind;
 use crate::types::{IString, ResourceLocation};
 
@@ -350,7 +357,16 @@ impl Model {
 	}
 }
 
-pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<BlockState, Vec<BlockStateModel>> {
+/**
+	Determines for every posssible blockstate the set of models which should be rendered for that state.
+
+	The interior `Vec`s are lists of models to be randomly chosen from; the outer `Vec`s are a set
+	of (chosen) models which should all be rendered together for the given state.
+*/
+pub fn models_for_states(
+	fs: &JarFS,
+	blockstates: &BlockStateCache,
+) -> HashMap<BlockState, Vec<Vec<BlockStateModel>>> {
 	let mut blockstateJsons = HashMap::new();
 	for block in blockstates.blocks() {
 		let path = block.into_path(ResourceKind::BlockState);
@@ -363,7 +379,7 @@ pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<B
 			.expect(&format!("Malformed blockstate json for {block}"));
 		blockstateJsons.insert(block, json);
 	}
-	
+
 	let missing = BlockStateModel {
 		model: "cuview:missing".into(),
 		xRotation: None,
@@ -371,7 +387,7 @@ pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<B
 		uvlock: None,
 		weight: None,
 	};
-	let mut modelForState = HashMap::new();
+	let mut modelsForState = HashMap::new();
 	for state in blockstates.states() {
 		let block = state.block_name();
 		let mut models = vec![];
@@ -380,25 +396,31 @@ pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<B
 		if let Some(json) = json {
 			match json {
 				JsonBlockState::Variants(map) => {
-					if map.contains_key("") {
-						assert!(
-							map.len() == 1,
-							"variants-style stateless property found among other properties in \
-							 blockstate JSON for {block}"
-						);
-						models.extend(map.get("").unwrap().iter());
-					} else {
-						for (stateStr, stateModels) in map {
-							let partialState =
-								BlockStateBuilder::from_variants_model(block, stateStr.as_str());
-							if partialState.keys().all(|key| {
-								state.get_property(key) == partialState.get_property(key)
-							}) {
-								models.extend(stateModels.iter());
-								break;
+					let missing = OneOrMany::One(missing);
+					let stateModels = (|| {
+						if let Some(xs) = map.get("") {
+							assert!(
+								map.len() == 1,
+								"variants-style stateless property found among other properties \
+								 in blockstate JSON for {block}"
+							);
+							xs
+						} else {
+							for (stateStr, stateModels) in map {
+								let partialState = BlockStateBuilder::from_variants_model(
+									block,
+									stateStr.as_str(),
+								);
+								if partialState.keys().all(|key| {
+									state.get_property(key) == partialState.get_property(key)
+								}) {
+									return stateModels;
+								}
 							}
+							&missing
 						}
-					}
+					})();
+					models.push(stateModels.iter().copied().collect());
 				},
 				JsonBlockState::Multipart(parts) => {
 					let case_matches = |case: &MultipartCase| -> bool {
@@ -435,7 +457,7 @@ pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<B
 						}
 
 						if matches {
-							models.extend(part.apply.iter().copied());
+							models.push(part.apply.iter().copied().collect());
 						}
 					}
 				},
@@ -446,10 +468,10 @@ pub fn models_for_states(fs: &JarFS, blockstates: &BlockStateCache) -> HashMap<B
 			if json.is_some() {
 				eprintln!("Blockstate JSON has no mapping for state {state}");
 			}
-			models.push(missing);
+			models.push(vec![missing]);
 		}
-		modelForState.insert(state, models);
+		modelsForState.insert(state, models);
 	}
-	
-	modelForState
+
+	modelsForState
 }

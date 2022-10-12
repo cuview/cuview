@@ -61,78 +61,16 @@ fn main() {
 	let blockstates = BlockStateCache::from_json(blockstates);
 
 	let modelsForState = models_for_states(&fs, &blockstates);
-	// let test = BlockStateBuilder::from_variants_model("cobblestone_wall".into(), "north=low,east=none,south=none,west=none,up=true,waterlogged=false").build();
-	let test = BlockState::stateless("stone".into());
-	dbg!(modelsForState.get(&test));
-
-	// dbg!(modelForState);
-
-	// let files = fs.files(ResourceKind::BlockState);
-	// let mut modelForState = HashMap::new();
-	#[cfg(none)]
-	for path in files.into_iter() {
-		let (block, _) = ResourceLocation::from_path(&path);
-		let json: JsonBlockState = serde_json::from_str(&fs.read_text(&path).unwrap()).unwrap();
-		match &json {
-			JsonBlockState::Variants(map) => {
-				let mut hasStateless = false;
-				for (i, props) in map.keys().enumerate() {
-					assert!(
-						!hasStateless,
-						"stateless property among other properties in blockstate {block}"
-					);
-					let state = if props.len() > 0 {
-						BlockStateBuilder::from_variants_model(block, props).build()
-					} else {
-						assert!(
-							i == 0,
-							"stateless property among other properties in blockstate {block}"
-						);
-						hasStateless = true;
-						BlockState::stateless(block)
-					};
-				}
-			},
-			JsonBlockState::Multipart(parts) => {
-				let mut states: HashMap<&str, Vec<&str>> = HashMap::new();
-				for part in parts {
-					if part.when.is_none() {
-						continue;
-					}
-					match part.when.as_ref().unwrap() {
-						MultipartWhen::And(props) => {
-							for (key, values) in &props.0 {
-								if !states.contains_key(key.as_str()) {
-									states.insert(key, Vec::with_capacity(16));
-								}
-								states
-									.get_mut(key.as_str())
-									.unwrap()
-									.extend(values.0.iter().map(|v| v.as_str()));
-							}
-						},
-						MultipartWhen::Or { or: props } => {
-							todo!("multipart OR on {block}");
-						},
-					}
-				}
-
-				dbg!(&states);
-				let states: Vec<_> = states
-					.into_iter()
-					.flat_map(|(k, vs)| vs.into_iter().map(move |v| (k, v)))
-					.collect();
-				dbg!(&states);
-				todo!("{block}");
-				/* for (k, vs) in states {
-					for v in vs {
-						let mut state = BlockStateBuilder::new(loc);
-						states.push(state.build());
-					}
-				} */
-			},
-		}
-	}
+	let test1 = BlockState::stateless("stone".into());
+	let test2 = BlockStateBuilder::from_variants_model("grass_block".into(), "snowy=false").build();
+	let test3 = BlockStateBuilder::from_variants_model(
+		"cobblestone_wall".into(),
+		"north=low,east=none,south=none,west=none,up=true,waterlogged=false",
+	)
+	.build();
+	dbg!(test1, modelsForState.get(&test1));
+	dbg!(test2, modelsForState.get(&test2));
+	dbg!(test3, modelsForState.get(&test3));
 }
 
 #[cfg(none)]

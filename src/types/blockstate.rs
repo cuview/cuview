@@ -156,7 +156,7 @@ impl BlockStateCache {
 		let mut res = HashMap::with_capacity(states.0.len());
 		for (block, def) in states.0 {
 			assert!(res.insert(block, vec![]).is_none());
-			
+
 			for state in def.states {
 				let State {
 					properties,
@@ -169,7 +169,7 @@ impl BlockStateCache {
 						builder.set_property(&k, &v);
 					}
 				}
-				
+
 				let state = builder.build();
 				let vec = res.get_mut(&block).unwrap();
 				if default {
