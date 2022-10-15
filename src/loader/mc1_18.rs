@@ -2,59 +2,49 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer};
 
-use super::common::AnvilRegion;
+use super::common::{AnvilRegion, biterator};
 use super::WorldLoader;
+use crate::types::blockstate::BlockStateBuilder;
 use crate::types::shared::Shared;
 use crate::types::{ChunkPos, RegionPos, ResourceLocation};
 use crate::world;
 
-struct Loader {
-	root: PathBuf,
-}
+struct Loader;
 
 impl WorldLoader for Loader {
-	fn load_world(&self) -> Shared<world::World> {
-		world::World::new(&self.root)
-	}
-
-	fn load_dimension(
-		&self,
-		world: &Shared<world::World>,
-		id: ResourceLocation,
-	) -> Shared<world::Dimension> {
-		// FIXME: move somewhere shared probably
-		let dimDir = match (id.modid.as_str(), id.name.as_str()) {
-			("minecraft", "overworld") => ".",
-			("minecraft", "the_end") => "DIM1",
-			("minecraft", "the_nether") => "DIM-1",
-			("minecraft", name) => panic!("Unknown vanilla dimension `minecraft:{}`", name),
-			_ => todo!("handle modded dimensions"),
-		};
-		let mut world = world.borrow_mut();
-		let rootDir = world.root_dir().join(dimDir);
-		dbg!((&dimDir, &rootDir));
-		world.new_dimension(id, &rootDir)
-	}
-
-	fn load_region(
-		&self,
-		dimension: &Shared<world::Dimension>,
-		pos: RegionPos,
-	) -> Shared<world::Region> {
-		let region = dimension.borrow_mut().new_region(pos);
-		region
-	}
-
-	fn load_chunk(&self, region: &Shared<world::Region>, pos: ChunkPos) -> Shared<world::Chunk> {
-		let chunk = region.borrow_mut().new_chunk(pos);
-		chunk
-	}
+    fn load_chunk(&self, chunk: &Shared<world::Chunk>, pos: ChunkPos, anvil: std::sync::Arc<AnvilRegion>) {
+		let rawChunk: Chunk = anvil.load_chunk(pos).unwrap();
+		for rawSection in &rawChunk.sections {
+			if rawSection.blocks.is_none() {
+				chunk.borrow_mut().new_section(rawSection.y, world::Palette::new());
+				continue;
+			}
+			
+			let blockInfo = rawSection.blocks.as_ref().unwrap();
+			let palette: world::Palette = blockInfo.palette.iter().map(|rawBS| {
+				let mut state = BlockStateBuilder::new(rawBS.name.as_str().into());
+				if let Some(props) = rawBS.properties.as_ref() {
+					for (k, v) in props {
+						state.set_property(k.as_str().into(), v.as_str().into());
+					}
+				}
+				state.build()
+			}).collect();
+			let paletteBits = palette.bits();
+			
+			let section = chunk.borrow_mut().new_section(rawSection.y, palette);
+			if let Some(blocks) = &blockInfo.blockArray {
+				section.borrow_mut().fill_blocks(biterator(paletteBits, bytemuck::cast_slice(blocks)));
+			} else {
+				let it = std::iter::once(0).cycle().take(4096);
+				section.borrow_mut().fill_blocks(it);
+			}
+		}
+    }
 }
 
 pub fn make_loader(root: &Path) -> Box<dyn WorldLoader> {
-	Box::new(Loader {
-		root: root.to_owned(),
-	})
+	Box::new(Loader)
 }
 
 #[derive(Clone, Debug, Deserialize)]

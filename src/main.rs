@@ -72,7 +72,7 @@ fn main() {
 	dbg!(test3, modelsForState.get(&test3));
 }
 
-// #[cfg(none)]
+#[cfg(none)]
 fn main() {
 	let fs = cuview::jarfs::JarFS::new(vec![
 		Path::new("client-1.18.2.jar"),
@@ -106,7 +106,7 @@ fn main() {
 	std::fs::write("out/interesting.mtl", mtl).unwrap();
 }
 
-#[cfg(none)]
+// #[cfg(none)]
 fn main() {
 	let args: Vec<_> = std::env::args().collect();
 	if args.len() < 2 {
@@ -133,21 +133,11 @@ fn main() {
 		version.0, version.1, version.2
 	);
 
-	/*let levelDat = worldDir.join("level.dat");
-	let levelDat: mc1_18::LevelDat = nbt::from_gzip_reader(std::fs::File::open(levelDat).unwrap()).unwrap();
-	dbg!(&levelDat); */
+	let wrangler = WorldWrangler::new(worldDir).unwrap();
 
-	let loader = get_loader(worldDir).unwrap();
-
-	let world = loader.load_world();
-	dbg!(&world);
-	dbg!(loader.probe_dimensions(&world));
-
-	let dim = loader.load_dimension(&world, "overworld".into());
-	dbg!(&dim);
-	// dbg!(loader.probe_regions(&dim));
-
-	let regionDir = dim.borrow().region_dir();
+	let dim = wrangler.probe_dimensions().iter().filter(|&&(id, _)| id == "overworld".into()).cloned().next().unwrap();
+	let dim = wrangler.load_dimension(dim);
+	
 	#[cfg(none)]
 	{
 		// searching for chunks using global palette
@@ -162,7 +152,7 @@ fn main() {
 				// todo!();
 				let chunk: mc1_18::Chunk = anvil.load_chunk(chunkPos).unwrap();
 				if ci % 8 == 0 || ci == chunks.len() - 1 {
-					print!(
+					eprint!(
 						"\rregion {}/{} ({},{}) chunk {}/{}            ",
 						ri + 1,
 						regions.len(),
@@ -171,93 +161,30 @@ fn main() {
 						ci + 1,
 						chunks.len()
 					);
-					std::io::stdout().flush();
 				}
 			}
-			println!();
+			eprintln!();
 		}
 
 		return;
 	}
-
+	
 	// #[cfg(none)]
 	{
-		let air = BlockState::new(ResourceLocation::new(
-			IString::from_static("minecraft").as_str(),
-			IString::from_static("air").as_str(),
-		));
-		// let targetBlock = BlockPos::new(0, -60, 0);
-		let targetBlock = BlockPos::new(13 * 16, -60, 13 * 16);
+		// let targetBlock = BlockPos::new(0, -61, 0);
+		let targetBlock = BlockPos::new(-1, -48, 0);
+		// let targetBlock = BlockPos::new(13 * 16, -60, 13 * 16);
 
-		let region = loader.load_region(&dim, targetBlock.into());
-		// dbg!(&region);
-		let anvil = region.borrow_mut().load_anvil().unwrap();
-
-		// let chunk = loader.load_chunk(&region, targetBlock.into());
-		let chunk: mc1_18::Chunk = anvil.load_chunk(targetBlock.into()).unwrap();
-		let section = (targetBlock.section() + 5) as usize;
-		dbg!(section);
-		let section = &chunk.sections[section];
-		let binfo = section.blocks.as_ref().unwrap();
-
-		let mut palette = Palette::new();
-		let mut id = 0;
-		for rawBS in &binfo.palette {
-			let mut state = BlockState::new(rawBS.name.as_str().into());
-			if let Some(props) = rawBS.properties.as_ref() {
-				for (k, v) in props {
-					state.set_property(k.as_str().into(), v.as_str().into());
-				}
-			}
-			palette.define(id, state);
-			id += 1;
-		}
-		dbg!(palette.bits());
-		// dbg!(&palette);
-
-		todo!();
-		let barray = binfo.blockArray.as_ref().unwrap();
-		for pid in biterator(palette.bits(), unsafe {
-			std::mem::transmute(barray.as_slice())
-		}) {
-			let state = palette.get_state(pid).unwrap();
-			if state == air {
-				continue;
-			}
-			dbg!(state);
-		}
+		let region = wrangler.load_region(&dim, targetBlock.into());
+		let chunk = wrangler.load_chunk(&region, targetBlock.into());
+		let section = chunk.borrow().get_section(targetBlock.section()).unwrap();
+		dbg!(section.borrow().get_block(targetBlock));
+		dbg!(
+			ChunkPos::from(targetBlock).blocks_in_section(targetBlock.section()).map(|pos| section.borrow().get_block(pos)).filter(|v| 
+				v.block_name() != "air".into()
+			).collect::<Vec<_>>()
+		);
 	}
-}
-
-fn biterator<'a>(bits: usize, mut xs: &'a [u64]) -> impl Iterator<Item = u32> + 'a {
-	let bits = bits as u32;
-	let mask = (1 << bits) - 1;
-	let mut x = xs[0];
-	xs = &xs[1 ..];
-	let mut remainder = u64::BITS;
-	std::iter::from_fn(move || {
-		if remainder == 0 && xs.len() == 0 {
-			None
-		} else {
-			if remainder == 0 {
-				x = xs[0];
-				xs = &xs[1 ..];
-			}
-
-			let elem = x & mask;
-			x >>= bits;
-			if let Some(v) = remainder.checked_sub(bits) {
-				remainder = v;
-				// TODO: <=1.15 wraps entries across words
-				if remainder < bits {
-					remainder = 0;
-				}
-			} else {
-				remainder = 0;
-			}
-			Some(elem as u32)
-		}
-	})
 }
 
 #[cfg(none)]

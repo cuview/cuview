@@ -10,7 +10,7 @@ use crate::loader::common::AnvilRegion;
 use crate::types::blockstate::{BlockState, BlockStateBuilder};
 use crate::types::coords::{ChunkPos, RegionPos};
 use crate::types::shared::{Shared, WeakShared};
-use crate::types::ResourceLocation;
+use crate::types::{ResourceLocation, BlockPos};
 
 pub struct World {
 	this: WeakShared<Self>,
@@ -103,7 +103,7 @@ impl Dimension {
 			pos
 		);
 		let this = self.this.upgrade().expect("null this");
-		let new = Region::new(this, pos);
+		let new = Region::new(this, pos, &self.region_dir());
 		self.regions.insert(pos, new.clone());
 		new
 	}
@@ -136,17 +136,18 @@ pub struct Region {
 	this: WeakShared<Self>,
 	dimension: Shared<Dimension>,
 	pos: RegionPos,
-	anvil: Option<Arc<AnvilRegion>>, // not `Shared` as it doesn't need mutability
+	anvil: Arc<AnvilRegion>, // not `Shared` as it doesn't need mutability
 	chunks: HashMap<ChunkPos, Shared<Chunk>>,
 }
 
 impl Region {
-	fn new(dimension: Shared<Dimension>, pos: RegionPos) -> Shared<Self> {
+	fn new(dimension: Shared<Dimension>, pos: RegionPos, regionDir: &Path) -> Shared<Self> {
+		let anvil = AnvilRegion::new(regionDir, pos).unwrap().into();
 		Shared::new_cyclic(|this| Self {
 			this: this.clone(),
 			dimension,
 			pos,
-			anvil: None,
+			anvil,
 			chunks: HashMap::new(),
 		})
 	}
@@ -163,14 +164,8 @@ impl Region {
 		self.dimension.clone()
 	}
 
-	pub fn anvil(&self) -> Option<Arc<AnvilRegion>> {
-		self.anvil.as_ref().map(|v| Arc::clone(v))
-	}
-
-	pub fn load_anvil<'a>(&'a mut self) -> Result<Arc<AnvilRegion>, io::Error> {
-		self.anvil = Some(AnvilRegion::new(self.dimension.borrow().region_dir(), self.pos)?.into());
-		self.anvil()
-			.ok_or_else(|| unreachable!("self.anvil cannot be None"))
+	pub fn anvil(&self) -> Arc<AnvilRegion> {
+		Arc::clone(&self.anvil)
 	}
 
 	pub fn new_chunk(&mut self, pos: ChunkPos) -> Shared<Chunk> {
@@ -234,7 +229,7 @@ impl Chunk {
 		self.region.clone()
 	}
 
-	pub fn new_section(&mut self, y: i8) -> Shared<ChunkSection> {
+	pub fn new_section(&mut self, y: i8, palette: Palette) -> Shared<ChunkSection> {
 		debug_assert!(
 			!self.sections.contains_key(&y),
 			"Duplicate chunk section in {:?}: {:?}",
@@ -242,7 +237,7 @@ impl Chunk {
 			y
 		);
 		let this = self.this.upgrade().expect("null this");
-		let new = ChunkSection::new(this, y);
+		let new = ChunkSection::new(this, self.pos, y, palette);
 		self.sections.insert(y, new.clone());
 		new
 	}
@@ -264,26 +259,32 @@ impl Debug for Chunk {
 
 pub struct ChunkSection {
 	chunk: Shared<Chunk>,
+	pos: ChunkPos,
+	y: i8,
 	palette: Shared<Palette>,
 	blocks: Vec<u32>,
-	y: i8,
 }
 
 impl ChunkSection {
-	fn new(chunk: Shared<Chunk>, y: i8) -> Shared<Self> {
+	fn new(chunk: Shared<Chunk>, pos: ChunkPos, y: i8, palette: Palette) -> Shared<Self> {
 		let mut blocks = Vec::new();
 		blocks.resize(16usize.pow(3), u32::MAX);
 		Self {
 			chunk,
-			palette: Shared::new(Palette::new()), // TODO `Option<Palette>` to fall back to global?
-			blocks,
+			pos,
 			y,
+			palette: Shared::new(palette),
+			blocks,
 		}
 		.into()
 	}
 
 	pub fn pos(&self) -> (ChunkPos, i8) {
-		(self.chunk.borrow().pos, self.y)
+		(self.pos, self.y)
+	}
+	
+	pub fn palette(&self) -> Shared<Palette> {
+		self.palette.clone()
 	}
 
 	pub fn world(&self) -> Shared<World> {
@@ -308,6 +309,33 @@ impl ChunkSection {
 	pub fn chunk(&self) -> Shared<Chunk> {
 		self.chunk.clone()
 	}
+	
+	fn index_of(&self, pos: BlockPos) -> usize {
+		debug_assert_eq!(ChunkPos::from(pos), self.pos);
+		debug_assert_eq!(pos.section(), self.y);
+		let pos = pos.chunk_relative();
+		((pos.y * ChunkPos::diameterBlocks.pow(2)) + (pos.z * ChunkPos::diameterBlocks) + pos.x) as usize
+	}
+	
+	pub fn get_block(&self, pos: BlockPos) -> BlockState {
+		let id = self.blocks[self.index_of(pos)];
+		self.palette.borrow().get_state(id).unwrap()
+	}
+	
+	pub fn set_block(&mut self, pos: BlockPos, state: BlockState) {
+		let index = self.index_of(pos);
+		self.blocks[index] = self.palette.borrow().get_id(state).unwrap();
+	}
+	
+	pub fn fill_blocks(&mut self, palettedBlocks: impl Iterator<Item = u32>) {
+		let mut len = 0;
+		for (pos, id) in self.pos.blocks_in_section(self.y).zip(palettedBlocks) {
+			len += 1;
+			let index = self.index_of(pos);
+			self.blocks[index] = id;
+		}
+		debug_assert_eq!(len, 4096);
+ 	}
 }
 
 impl Debug for ChunkSection {
@@ -386,6 +414,16 @@ impl Debug for Palette {
 			.field("entries", &entries)
 			.finish()
 	}
+}
+
+impl FromIterator<BlockState> for Palette {
+    fn from_iter<T: IntoIterator<Item = BlockState>>(iter: T) -> Self {
+		let mut res = Self::new();
+        for (id, state) in iter.into_iter().enumerate() {
+			res.define(id as u32, state);
+		}
+		res
+    }
 }
 
 #[test]

@@ -94,3 +94,42 @@ impl AnvilRegion {
 		}
 	}
 }
+
+pub fn biterator(bits: usize, mut words: &[u64]) -> impl '_ + Iterator<Item = u32> {
+	let bits = bits as u32;
+	let mask = (1 << bits) - 1;
+	let mut currentWord = words[0];
+	words = &words[1 ..];
+	let mut bitsRemaining = u64::BITS;
+	std::iter::from_fn(move || {
+		if bitsRemaining == 0 && words.len() == 0 {
+			None
+		} else {
+			if bitsRemaining == 0 {
+				currentWord = words[0];
+				words = &words[1 ..];
+				bitsRemaining = u64::BITS;
+			}
+
+			let elem = currentWord & mask;
+			currentWord >>= bits;
+			if let Some(v) = bitsRemaining.checked_sub(bits) {
+				bitsRemaining = v;
+				// TODO: <=1.15 wraps entries across words
+				if bitsRemaining < bits {
+					bitsRemaining = 0;
+				}
+			} else {
+				bitsRemaining = 0;
+			}
+			Some(elem as u32)
+		}
+	})
+}
+
+#[test]
+fn test_biterator() {
+	let inp: Vec<u64> = (0 .. 256).collect();
+	let res: Vec<u32> = biterator(4, &inp).collect();
+	assert_eq!(res.len(), 4096);
+}
