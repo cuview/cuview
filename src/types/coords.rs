@@ -1,3 +1,5 @@
+use std::{str::FromStr, num::ParseIntError};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BlockPos {
 	pub x: i32,
@@ -27,6 +29,18 @@ impl BlockPos {
 	}
 }
 
+impl FromStr for BlockPos {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut split = s.splitn(3, ",");
+		let x: i32 = split.next().unwrap_or("").trim().parse()?;
+		let y: i32 = split.next().unwrap_or("").trim().parse()?;
+		let z: i32 = split.next().unwrap_or("").trim().parse()?;
+		Ok(Self { x, y, z })
+    }
+}
+
 #[test]
 fn test_blockpos() {
 	let pos = BlockPos::new(0, 0, 0);
@@ -34,6 +48,13 @@ fn test_blockpos() {
 
 	let pos = BlockPos::new(-1, 0, 0);
 	assert!(pos.chunk_relative() == BlockPos::new(15, 0, 0));
+	
+	let pos = BlockPos::from_str("0,0,0");
+	assert!(pos == Ok(BlockPos::new(0, 0, 0)));
+	let pos = BlockPos::from_str("-1, -1, -1");
+	assert!(pos == Ok(BlockPos::new(-1, -1, -1)));
+	let pos = BlockPos::from_str("abc");
+	assert!(pos.is_err());
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -102,6 +123,17 @@ impl From<BlockPos> for ChunkPos {
 	}
 }
 
+impl FromStr for ChunkPos {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut split = s.splitn(2, ",");
+		let x: i32 = split.next().unwrap_or("").trim().parse()?;
+		let z: i32 = split.next().unwrap_or("").trim().parse()?;
+		Ok(Self { x, z })
+    }
+}
+
 #[test]
 fn test_chunkpos() {
 	let pos = ChunkPos::new(0, 0);
@@ -131,6 +163,13 @@ fn test_chunkpos() {
 	let sectionBlocks: Vec<_> = pos.blocks_in_section(-1).collect();
 	assert!(sectionBlocks.first().unwrap().y == -16);
 	assert!(sectionBlocks.last().unwrap().y == -1);
+	
+	let pos = ChunkPos::from_str("0,0");
+	assert!(pos == Ok(ChunkPos::new(0, 0)));
+	let pos = ChunkPos::from_str("-1, -1");
+	assert!(pos == Ok(ChunkPos::new(-1, -1)));
+	let pos = ChunkPos::from_str("abc");
+	assert!(pos.is_err());
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -181,6 +220,15 @@ impl From<ChunkPos> for RegionPos {
 			z: pos.z >> 5,
 		}
 	}
+}
+
+impl FromStr for RegionPos {
+    type Err = <ChunkPos as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let ChunkPos { x, z } = <ChunkPos as FromStr>::from_str(s)?;
+		Ok(Self { x, z })
+    }
 }
 
 #[test]
