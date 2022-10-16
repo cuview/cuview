@@ -224,13 +224,13 @@ pub enum Texture {
 }
 
 impl From<&str> for Texture {
-    fn from(str: &str) -> Self {
-        if str.starts_with("#") {
+	fn from(str: &str) -> Self {
+		if str.starts_with("#") {
 			Self::Slot((&str[1 ..]).into())
 		} else {
 			Self::Asset(str.into())
 		}
-    }
+	}
 }
 
 #[derive(Clone, Copy)]
@@ -514,17 +514,17 @@ impl ModelCache {
 }
 
 impl Deref for ModelCache {
-    type Target = HashMap<ResourceLocation, Model>;
+	type Target = HashMap<ResourceLocation, Model>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
 }
 
 impl DerefMut for ModelCache {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
 }
 
 fn element_faces(elem: &Element) -> impl '_ + Iterator<Item = Face> {

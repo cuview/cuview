@@ -417,13 +417,13 @@ impl Debug for Palette {
 }
 
 impl FromIterator<BlockState> for Palette {
-    fn from_iter<T: IntoIterator<Item = BlockState>>(iter: T) -> Self {
+	fn from_iter<T: IntoIterator<Item = BlockState>>(iter: T) -> Self {
 		let mut res = Self::new();
-        for (id, state) in iter.into_iter().enumerate() {
+		for (id, state) in iter.into_iter().enumerate() {
 			res.define(id as u32, state);
 		}
 		res
-    }
+	}
 }
 
 #[test]

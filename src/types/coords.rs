@@ -30,15 +30,15 @@ impl BlockPos {
 }
 
 impl FromStr for BlockPos {
-    type Err = ParseIntError;
+	type Err = ParseIntError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.splitn(3, ",");
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let mut split = s.splitn(3, ",");
 		let x: i32 = split.next().unwrap_or("").trim().parse()?;
 		let y: i32 = split.next().unwrap_or("").trim().parse()?;
 		let z: i32 = split.next().unwrap_or("").trim().parse()?;
 		Ok(Self { x, y, z })
-    }
+	}
 }
 
 #[test]
@@ -124,14 +124,14 @@ impl From<BlockPos> for ChunkPos {
 }
 
 impl FromStr for ChunkPos {
-    type Err = ParseIntError;
+	type Err = ParseIntError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.splitn(2, ",");
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let mut split = s.splitn(2, ",");
 		let x: i32 = split.next().unwrap_or("").trim().parse()?;
 		let z: i32 = split.next().unwrap_or("").trim().parse()?;
 		Ok(Self { x, z })
-    }
+	}
 }
 
 #[test]
@@ -223,12 +223,12 @@ impl From<ChunkPos> for RegionPos {
 }
 
 impl FromStr for RegionPos {
-    type Err = <ChunkPos as FromStr>::Err;
+	type Err = <ChunkPos as FromStr>::Err;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let ChunkPos { x, z } = <ChunkPos as FromStr>::from_str(s)?;
 		Ok(Self { x, z })
-    }
+	}
 }
 
 #[test]

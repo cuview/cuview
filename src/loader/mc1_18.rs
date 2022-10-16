@@ -12,7 +12,7 @@ use crate::world;
 struct Loader;
 
 impl WorldLoader for Loader {
-    fn load_chunk(&self, chunk: &Shared<world::Chunk>, pos: ChunkPos, anvil: std::sync::Arc<AnvilRegion>) {
+	fn load_chunk(&self, chunk: &Shared<world::Chunk>, pos: ChunkPos, anvil: std::sync::Arc<AnvilRegion>) {
 		let rawChunk: Chunk = anvil.load_chunk(pos).unwrap();
 		for rawSection in &rawChunk.sections {
 			if rawSection.blocks.is_none() {
@@ -40,7 +40,7 @@ impl WorldLoader for Loader {
 				section.borrow_mut().fill_blocks(it);
 			}
 		}
-    }
+	}
 }
 
 pub fn make_loader(root: &Path) -> Box<dyn WorldLoader> {
