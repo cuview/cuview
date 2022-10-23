@@ -43,6 +43,15 @@ impl WorldWrangler {
 		dimensions
 	}
 	
+	pub fn probe_dimension(&self, id: ResourceLocation) -> Option<(ResourceLocation, PathBuf)> {
+		for (other, path) in self.probe_dimensions() {
+			if id == other {
+				return Some((id, path));
+			}
+		}
+		None
+	}
+	
 	pub fn load_dimension(&self, probed: (ResourceLocation, PathBuf)) -> Shared<Dimension> {
 		let (id, root) = probed;
 		let dimension = self.world.borrow_mut().new_dimension(id, &root);

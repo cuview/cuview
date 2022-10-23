@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Shr;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::{fmt, io};
@@ -245,6 +245,12 @@ impl Chunk {
 	pub fn get_section(&self, y: i8) -> Option<Shared<ChunkSection>> {
 		self.sections.get(&y).map(Shared::clone)
 	}
+	
+	pub fn sections(&self) -> Range<i8> {
+		let min = self.sections.keys().copied().min().unwrap_or(0);
+		let max = self.sections.keys().copied().max().map(|v| v + 1).unwrap_or(0);
+		min .. max
+	}
 }
 
 impl Debug for Chunk {
@@ -319,7 +325,8 @@ impl ChunkSection {
 	
 	pub fn get_block(&self, pos: BlockPos) -> BlockState {
 		let id = self.blocks[self.index_of(pos)];
-		self.palette.borrow().get_state(id).unwrap()
+		let palette = self.palette.borrow();
+		palette.get_state(id).unwrap_or_else(|| panic!("{pos:?} {id} {palette:?}"))
 	}
 	
 	pub fn set_block(&mut self, pos: BlockPos, state: BlockState) {
@@ -341,10 +348,9 @@ impl ChunkSection {
 impl Debug for ChunkSection {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ChunkSection")
-			.field("chunk", &self.chunk)
-			.field("palette", &self.palette)
-			.field("blocks", &self.blocks)
+			.field("pos", &self.pos)
 			.field("y", &self.y)
+			.field("palette", &self.palette)
 			.finish()
 	}
 }

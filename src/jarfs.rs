@@ -26,10 +26,10 @@ impl JarFile {
 pub struct JarFS(Vec<JarFile>);
 
 impl JarFS {
-	pub fn new(paths: Vec<&Path>) -> io::Result<Self> {
+	pub fn new<P: AsRef<Path>>(paths: Vec<P>) -> io::Result<Self> {
 		let mut jars = Vec::with_capacity(paths.len());
 		for path in paths {
-			jars.push(JarFile::new(path)?);
+			jars.push(JarFile::new(path.as_ref())?);
 		}
 		Ok(Self(jars))
 	}

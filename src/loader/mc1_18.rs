@@ -16,7 +16,6 @@ impl WorldLoader for Loader {
 		let rawChunk: Chunk = anvil.load_chunk(pos).unwrap();
 		for rawSection in &rawChunk.sections {
 			if rawSection.blocks.is_none() {
-				chunk.borrow_mut().new_section(rawSection.y, world::Palette::new());
 				continue;
 			}
 			

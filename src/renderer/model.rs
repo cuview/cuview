@@ -1,9 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+use anyhow::Context;
+use bytemuck::{Zeroable, Pod};
 use glam::{Vec2, Vec3, Mat4};
 use serde::Deserialize;
 
@@ -211,7 +213,8 @@ impl Cube {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[repr(C)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 pub struct Vertex {
 	pub pos: [f32; 3],
 	pub uv: [f32; 2],
@@ -413,7 +416,7 @@ impl ModelCache {
 		let mut jsons = HashMap::new();
 		for path in fs.files(ResourceKind::Model) {
 			let (loc, _) = ResourceLocation::from_path(&path);
-			let model: JsonModel = serde_json::from_str(&fs.read_text(&path).unwrap()).unwrap();
+			let model: JsonModel = serde_json::from_str(&fs.read_text(&path).unwrap()).context(format!("parsing json model `{loc}`")).unwrap();
 			jsons.insert(loc, model);
 		}
 		
@@ -511,6 +514,56 @@ impl ModelCache {
 		}
 		Self(cache)
 	}
+	
+	pub fn geometry_buffer(&self) -> GeometryBuffer {
+		let mut vertices = vec![];
+		let mut modelMap = HashMap::new();
+		let mut inheritingModels = HashSet::new();
+		
+		let mut vertexId = 0;
+		for (&id, model) in self.0.iter() {
+			match &model.faces {
+				Faces::Inherited(_) => {
+					inheritingModels.insert(id);
+					continue;
+				},
+				Faces::Specified(faces) => {
+					let faces = faces.borrow();
+					let baseVertex = vertexId;
+					let numVertices = faces.len() * 6;
+					vertexId += numVertices;
+					vertices.extend(faces.iter().flat_map(|face| [
+						// expand triangle strip to pair of tris
+						face.verts[0],
+						face.verts[1],
+						face.verts[2],
+						face.verts[1],
+						face.verts[3],
+						face.verts[2],
+					]));
+					modelMap.insert(id, (baseVertex, numVertices));
+				}
+			}
+		}
+		
+		for id in inheritingModels {
+			let model = self.0.get(&id).unwrap();
+			match &model.faces {
+				Faces::Specified(_) => unreachable!(),
+				Faces::Inherited(parent) => {
+					if let Some(info) = modelMap.get(parent).cloned() {
+						modelMap.insert(id, info);
+					}
+					// TODO: logging `None`s?
+				}
+			}
+		}
+		
+		GeometryBuffer {
+			vertices,
+			modelMap
+		}
+	}
 }
 
 impl Deref for ModelCache {
@@ -527,10 +580,10 @@ impl DerefMut for ModelCache {
 	}
 }
 
-fn element_faces(elem: &Element) -> impl '_ + Iterator<Item = Face> {
-	elem.faces.iter().map(|(dir, face)| {
-		todo!()
-	})
+pub struct GeometryBuffer {
+	pub vertices: Vec<Vertex>,
+	
+	pub modelMap: HashMap<ResourceLocation, (usize, usize)>
 }
 
 /**
@@ -642,7 +695,7 @@ pub fn models_for_states(
 
 		if models.len() == 0 || json.is_none() {
 			if json.is_some() {
-				eprintln!("Blockstate JSON has no mapping for state {state}");
+				// eprintln!("Blockstate JSON has no mapping for state {state}");
 			}
 			models.push(vec![missing]);
 		}
