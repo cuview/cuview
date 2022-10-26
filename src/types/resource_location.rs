@@ -12,6 +12,7 @@ pub enum ResourceKind {
 	BlockState,
 	Model,
 	Texture,
+	TextureMeta,
 }
 
 impl ResourceKind {
@@ -20,6 +21,7 @@ impl ResourceKind {
 			Self::BlockState => "blockstates",
 			Self::Model => "models",
 			Self::Texture => "textures",
+			Self::TextureMeta => "textures",
 		}
 	}
 
@@ -28,6 +30,7 @@ impl ResourceKind {
 			Self::BlockState => "json",
 			Self::Model => "json",
 			Self::Texture => "png",
+			Self::TextureMeta => "png.mcmeta",
 		}
 	}
 }
@@ -44,7 +47,7 @@ impl From<&str> for ResourceKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
-#[serde(from = "&str")]
+#[serde(from = "String")]
 pub struct ResourceLocation {
 	pub modid: IString,
 	pub name: IString,
@@ -110,14 +113,10 @@ impl From<&str> for ResourceLocation {
 	}
 }
 
-#[cfg(none)]
-impl From<JsonValue> for ResourceLocation {
-	fn from(v: JsonValue) -> Self {
-		let str = v.as_str().expect(&format!(
-			"parsing ResourceLocation from JSON string but instead got `{v:?}`"
-		));
-		Self::from(str)
-	}
+impl From<String> for ResourceLocation {
+    fn from(s: String) -> Self {
+        s.as_str().into()
+    }
 }
 
 impl From<ResourceLocation> for String {

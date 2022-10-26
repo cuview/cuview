@@ -25,6 +25,7 @@ use crate::types::{IString, ResourceLocation};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Direction {
+	#[serde(alias = "top")]
 	Up,
 
 	#[serde(alias = "bottom")]
@@ -408,6 +409,11 @@ impl Model {
 pub struct ModelCache(HashMap<ResourceLocation, Model>);
 
 impl ModelCache {
+	const placeholderModelIds: &'static [&'static str] = &[
+		"builtin/entity",
+		"twilightforest:util/block_no_ao",
+	];
+	
 	pub fn new() -> Self {
 		ModelCache(HashMap::new())
 	}
@@ -416,11 +422,26 @@ impl ModelCache {
 		let mut jsons = HashMap::new();
 		for path in fs.files(ResourceKind::Model) {
 			let (loc, _) = ResourceLocation::from_path(&path);
-			let model: JsonModel = serde_json::from_str(&fs.read_text(&path).unwrap()).context(format!("parsing json model `{loc}`")).unwrap();
+			let ctx = format!("parsing json model `{loc}` ({path:?})");
+			// first parsing as a `Value` allows duplicate fields (some mods have copypasta'd models...)
+			let json: serde_json::Value = serde_json::from_str(&fs.read_text(&path).context(ctx.clone()).unwrap()).context(ctx.clone()).unwrap();
+			let model: JsonModel = serde_json::from_value(json).context(ctx).unwrap();
 			jsons.insert(loc, model);
 		}
 		
-		let mut cache: HashMap<ResourceLocation, Model> = HashMap::new();
+		let mut cache = Self(HashMap::new());
+		
+		let emptyFaces = Faces::Specified(Shared::new(vec![]));
+		for &id in Self::placeholderModelIds {
+			let id = id.into();
+			cache.insert(id, Model {
+				id,
+				parent: None,
+				textureSlots: HashMap::new(),
+				faces: emptyFaces.clone(),
+			});
+		}
+		
 		let mut remaining: HashSet<_> = jsons.keys().cloned().collect();
 		let mut newModels = Vec::with_capacity(remaining.len());
 		let mut remainingLen = usize::MAX;
@@ -430,6 +451,7 @@ impl ModelCache {
 				break;
 			}
 			if remainingLen == newRemainingLen {
+				let remaining: BTreeSet<_> = remaining.into_iter().collect();
 				panic!("Failed to load any remaining models: {remaining:?}");
 			}
 			remainingLen = newRemainingLen;
@@ -512,7 +534,7 @@ impl ModelCache {
 				remaining.remove(&loc);
 			}
 		}
-		Self(cache)
+		cache
 	}
 	
 	pub fn geometry_buffer(&self) -> GeometryBuffer {
