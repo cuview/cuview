@@ -56,10 +56,17 @@ impl JarFS {
 				.components()
 				.map(|v| v.as_os_str().to_str().unwrap())
 				.collect();
+			let extension = path.extension().unwrap_or_default();
 			match components.as_slice() {
-				["assets", _, "blockstates", ..] => kind == ResourceKind::BlockState,
-				["assets", _, "models", "block", ..] => kind == ResourceKind::Model,
-				["assets", _, "textures", ..] => kind == ResourceKind::Texture,
+				["assets", _, "blockstates", ..] =>
+					kind == ResourceKind::BlockState &&
+					extension == ResourceKind::BlockState.extension(),
+				["assets", _, "models", "block", ..] =>
+					kind == ResourceKind::Model &&
+					extension == ResourceKind::Model.extension(),
+				["assets", _, "textures", ..] =>
+					kind == ResourceKind::Texture &&
+					extension == ResourceKind::Texture.extension(),
 				_ => false,
 			}
 		});
