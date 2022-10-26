@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, BTreeSet};
 use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -419,14 +420,47 @@ impl ModelCache {
 	}
 	
 	pub fn from_jsons(fs: &JarFS) -> Self {
-		let mut jsons = HashMap::new();
-		for path in fs.files(ResourceKind::Model) {
+		let parse_model = |path: &Path| {
 			let (loc, _) = ResourceLocation::from_path(&path);
 			let ctx = format!("parsing json model `{loc}` ({path:?})");
 			// first parsing as a `Value` allows duplicate fields (some mods have copypasta'd models...)
 			let json: serde_json::Value = serde_json::from_str(&fs.read_text(&path).context(ctx.clone()).unwrap()).context(ctx.clone()).unwrap();
 			let model: JsonModel = serde_json::from_value(json).context(ctx).unwrap();
+			(loc, model)
+		};
+		
+		let mut jsons = HashMap::new();
+		for path in fs.files(ResourceKind::Model) {
+			let (loc, model) = parse_model(&path);
 			jsons.insert(loc, model);
+		}
+		
+		// load any inherited models that lie outside the block models directory
+		let mut parents: HashSet<_> = jsons
+			.values()
+			.filter_map(|m| m
+				.parent
+				.and_then(|id| (!jsons.contains_key(&id)).then_some(id))
+			)
+			.collect();
+		let mut newParents = HashSet::new();
+		loop {
+			if parents.len() == 0 {
+				break;
+			}
+			
+			for &parent in &parents {
+				let path = parent.into_path(ResourceKind::Model);
+				let (_, model) = parse_model(&path);
+				if let Some(newParent) = model.parent {
+					if !jsons.contains_key(&newParent) {
+						newParents.insert(newParent);
+					}
+				}
+				jsons.insert(parent, model);
+			}
+			parents.clear();
+			std::mem::swap(&mut parents, &mut newParents);
 		}
 		
 		let mut cache = Self(HashMap::new());
