@@ -37,7 +37,14 @@ impl JarFS {
 	pub fn all_files(&self) -> BTreeSet<PathBuf> {
 		let mut res = BTreeSet::new();
 		for jar in &self.0 {
-			res.extend(jar.zipfile.borrow().file_names().map(Into::into));
+			res.extend(
+				jar
+					.zipfile
+					.borrow()
+					.file_names()
+					.filter(|s| !s.ends_with("/"))
+					.map(Into::into)
+			);
 		}
 		res
 	}
