@@ -436,11 +436,16 @@ impl ModelCache {
 		}
 		
 		// load any inherited models that lie outside the block models directory
+		let placeholders: Vec<ResourceLocation> = Self::placeholderModelIds
+			.iter()
+			.copied()
+			.map(Into::into)
+			.collect();
 		let mut parents: HashSet<_> = jsons
 			.values()
 			.filter_map(|m| m
 				.parent
-				.and_then(|id| (!jsons.contains_key(&id)).then_some(id))
+				.and_then(|id| (!jsons.contains_key(&id) && !placeholders.contains(&id)).then_some(id))
 			)
 			.collect();
 		let mut newParents = HashSet::new();
@@ -453,7 +458,7 @@ impl ModelCache {
 				let path = parent.into_path(ResourceKind::Model);
 				let (_, model) = parse_model(&path);
 				if let Some(newParent) = model.parent {
-					if !jsons.contains_key(&newParent) {
+					if !jsons.contains_key(&newParent) && !placeholders.contains(&newParent) {
 						newParents.insert(newParent);
 					}
 				}
@@ -466,8 +471,7 @@ impl ModelCache {
 		let mut cache = Self(HashMap::new());
 		
 		let emptyFaces = Faces::Specified(Shared::new(vec![]));
-		for &id in Self::placeholderModelIds {
-			let id = id.into();
+		for id in placeholders {
 			cache.insert(id, Model {
 				id,
 				parent: None,
