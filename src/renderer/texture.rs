@@ -88,7 +88,7 @@ impl Atlas {
 #[derive(Debug)]
 pub struct Cartographer {
 	pub size: UVec2,
-	textures: HashMap<ResourceLocation, TextureId>,
+	pub textures: HashMap<ResourceLocation, TextureId>,
 	elementDiameters: Vec<u32>,
 }
 
@@ -105,7 +105,8 @@ impl Cartographer {
 		let mut textures = HashMap::new();
 		let mut atlases: Vec<Atlas> = Vec::with_capacity(u8::MAX as usize);
 
-		let mut add_texture = |loc: ResourceLocation, diameter: usize| -> TextureId {
+		let mut add_texture = |loc: ResourceLocation, img: Image| {
+			let diameter = img.size.x as usize;
 			let atlas = if let Some(atlas) = atlases
 				.iter_mut()
 				.filter(|a| a.texDiameter == diameter && !a.full(maxTextureDiameter))
@@ -120,27 +121,26 @@ impl Cartographer {
 			};
 			let id = atlas.entries.len();
 			atlas.entries.push(loc);
-			TextureId {
+			
+			let tid = TextureId {
 				atlas: atlas.id,
 				texture: id as u32,
-			}
+			};
+			textures.insert(loc, tid);
+			images.insert(loc, img);
 		};
-
-		let missingImage = {
-			let mut res = Image::empty(UVec2::splat(16));
-			let mut tmp = Image::empty(UVec2::splat(8));
-			tmp.pixels.fill(0xFF_FF00FF);
-			res.blit_from(&tmp, UVec2::splat(0), None);
-			res.blit_from(&tmp, UVec2::splat(8), None);
-			res
-		};
+	
+		let missingTex = "cuview:missing_texture".into();
+		let missingTexImage = missing_texture(0xFF_FF00FF);
+		add_texture(missingTex, missingTexImage.clone());
+		
 		for loc in models
 			.all_block_textures()
 			.into_iter()
 			.collect::<BTreeSet<_>>()
 		{
 			let path = loc.into_path(ResourceKind::Texture);
-			let mut image = Image::from_jarfs(fs, &path).unwrap_or_else(|_| missingImage.clone());
+			let mut image = Image::from_jarfs(fs, &path).unwrap_or_else(|_| missingTexImage.clone());
 
 			let UVec2 {
 				x: width,
@@ -178,9 +178,7 @@ impl Cartographer {
 				}
 			}
 
-			images.insert(loc, image);
-			let texId = add_texture(loc, width as usize);
-			textures.insert(loc, texId);
+			add_texture(loc, image);
 		}
 
 		let diameters: Vec<_> = atlases.iter().map(|a| a.texDiameter as u32).collect();
@@ -190,7 +188,6 @@ impl Cartographer {
 			.fold(UVec2::splat(0), |res, v| {
 				uvec2(res.x.max(v.x), res.y.max(v.y))
 			});
-		dbg!(layerSize);
 		let mut layers = Vec::with_capacity(atlases.len());
 		for (aid, atlas) in atlases.iter().enumerate() {
 			let mut layer = Image::empty(layerSize);
@@ -234,7 +231,16 @@ impl Cartographer {
 	}
 }
 
-#[derive(Clone, Debug)]
+fn missing_texture(color: u32) -> Image {
+	const diameter: u32 = 16;
+	let color = Image::solid_color(UVec2::splat(diameter / 2), color);
+	let mut img = Image::empty(UVec2::splat(diameter));
+	img.blit_from(&color, UVec2::ZERO, None);
+	img.blit_from(&color, UVec2::splat(diameter / 2), None);
+	img
+}
+
+#[derive(Clone)]
 pub struct Image {
 	pub size: UVec2,
 	pub pixels: Vec<u32>,
@@ -245,6 +251,13 @@ impl Image {
 		Self {
 			size,
 			pixels: vec![0xFF_000000; (size.x * size.y) as usize],
+		}
+	}
+	
+	pub fn solid_color(size: UVec2, color: u32) -> Self {
+		Self {
+			size,
+			pixels: vec![color; (size.x * size.y) as usize],
 		}
 	}
 
@@ -370,6 +383,12 @@ impl Image {
 	}
 }
 
+impl std::fmt::Debug for Image {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Image").field("size", &self.size).finish()
+    }
+}
+
 #[test]
 fn test_image() {
 	let mut dest = Image {
@@ -406,7 +425,7 @@ fn test_image() {
 		]
 	);
 
-	dest.pixels.iter_mut().for_each(|v| *v = 0);
+	dest.pixels.fill(0);
 	dest.blit_from(&src, uvec2(0, 0), Some(uvec2(1, 1)));
 	assert_eq!(dest.pixels, [0xFFFF_FFFF, 0, 0, 0]);
 

@@ -424,11 +424,6 @@ fn main() {
 			usage: wgpu::BufferUsages::VERTEX,
 			contents: bytemuck::cast_slice(&geometry.vertices),
 		});
-		let slotMappingsBuffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: None,
-			usage: wgpu::BufferUsages::STORAGE,
-			contents: bytemuck::cast_slice(&geometry.texturesForSlots),
-		});
 
 		// assuming worst case every block in section is composed of 10 submodels
 		const submodelsPerBlock: usize = 10;
@@ -516,16 +511,6 @@ fn main() {
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 2,
-					visibility: wgpu::ShaderStages::VERTEX,
-					ty: wgpu::BindingType::Buffer {
-						ty: wgpu::BufferBindingType::Storage { read_only: true },
-						has_dynamic_offset: false,
-						min_binding_size: None,
-					},
-					count: None,
-				},
-				wgpu::BindGroupLayoutEntry {
-					binding: 3,
 					visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Texture {
 						sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -535,7 +520,7 @@ fn main() {
 					count: None,
 				},
 				wgpu::BindGroupLayoutEntry {
-					binding: 4,
+					binding: 3,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
@@ -556,14 +541,10 @@ fn main() {
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: slotMappingsBuffer.as_entire_binding(),
-				},
-				wgpu::BindGroupEntry {
-					binding: 3,
 					resource: wgpu::BindingResource::TextureView(&blockTextureView),
 				},
 				wgpu::BindGroupEntry {
-					binding: 4,
+					binding: 3,
 					resource: wgpu::BindingResource::Sampler(&blockTextureSampler),
 				},
 			],
@@ -684,16 +665,15 @@ fn main() {
 						let model = &set[blockpos_rng(blockPos).rem_euclid(set.len())];
 						let modelId = model.model;
 						if let Some((baseVertex, numVerts)) =
-							geometry.vertexMap.get(&modelId).copied()
+							geometry.modelInfo.get(&modelId).copied()
 						{
 							let blockRel = blockPos.chunk_relative();
 							let instance = (blockRel.y * 256 + blockRel.z * 16 + blockRel.x) as u32;
-							let texBase = geometry.baseSlots.get(&modelId).copied().unwrap_or(0);
 							indirectDraws.extend(
 								DrawIndirect {
 									base_vertex: baseVertex as u32,
 									vertex_count: numVerts as u32,
-									base_instance: texBase << 12 | instance,
+									base_instance: instance,
 									instance_count: 1,
 								}
 								.as_bytes(),

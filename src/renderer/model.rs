@@ -229,7 +229,7 @@ pub struct Vertex {
 #[derive(Clone, Copy, Zeroable, Pod)]
 pub struct FullVertex {
 	pub vert: Vertex,
-	pub slot: u32,
+	pub texId: u32,
 }
 
 impl Deref for FullVertex {
@@ -263,126 +263,14 @@ pub struct Face {
 }
 
 #[derive(Clone)]
-pub enum Faces {
-	Inherited(ResourceLocation),
-	Specified(Shared<Vec<Face>>),
-}
-
-impl Faces {
-	pub fn inherited(&self) -> bool {
-		match self {
-			Self::Inherited(_) => true,
-			_ => false,
-		}
-	}
-}
-
-#[derive(Clone)]
 pub struct Model {
-	id: ResourceLocation,
-	parent: Option<ResourceLocation>,
-	textureSlots: BTreeMap<IString, Texture>,
-	faces: Faces,
+	pub id: ResourceLocation,
+	pub parent: Option<ResourceLocation>,
+	pub textureSlots: BTreeMap<IString, Texture>,
+	pub faces: Vec<Face>,
 }
 
 impl Model {
-	pub fn into_wavefront(
-		cache: &ModelCache,
-		models: &[(&str, Self)],
-		mtlFilename: &str,
-	) -> (String, String) {
-		const palette: &[u32] = &[
-			0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x7FFF00,
-			0xFF7F00, 0x007FFF, 0x00FF7F, 0x7F00FF, 0xFF007F,
-		];
-
-		let mut obj = String::new();
-		let mut mtl = String::new();
-		obj.write_fmt(format_args!("mtllib {mtlFilename}\n\n"))
-			.unwrap();
-
-		let mut vertIndex = 1;
-		let mut texIndex = 0;
-		let mut slotCounts: HashMap<IString, usize> = HashMap::new();
-		for (index, (modelName, model)) in models.iter().enumerate() {
-			if index > 0 {
-				obj.write_str("\n").unwrap();
-			}
-			obj.write_fmt(format_args!("o {modelName}\n")).unwrap();
-
-			let mut texgroups = HashMap::new();
-			let faces = model.faces(cache);
-			let faces = faces.borrow();
-			for face in faces.iter() {
-				let texName: String = match face.texture {
-					Texture::Slot(name) => model.texture(&name),
-					Texture::Asset(loc) => loc,
-				}
-				.into();
-				let list = texgroups
-					.entry(texName)
-					.or_insert_with(|| Vec::with_capacity(64));
-				list.push(face);
-			}
-
-			for (texture, faces) in texgroups {
-				let texture = texture
-					.chars()
-					.map(|c| match c {
-						'a' ..= 'z' | 'A' ..= 'Z' => c,
-						_ => '_',
-					})
-					.collect::<String>()
-					.into();
-				let texId = *slotCounts
-					.entry(texture)
-					.and_modify(|v| *v += 1)
-					.or_insert(0);
-				mtl.write_fmt(format_args!("newmtl {texture}{texId}\n"))
-					.unwrap();
-				mtl.write_fmt(format_args!("d 1\nNs 0\n")).unwrap();
-
-				let color = palette[texIndex % palette.len()];
-				texIndex += 1;
-				let (r, g, b) = (
-					((color & 0xFF0000) >> 16) as f32 / 255.0,
-					((color & 0x00FF00) >> 8) as f32 / 255.0,
-					((color & 0x0000FF) >> 0) as f32 / 255.0,
-				);
-				mtl.write_fmt(format_args!("Kd {r:.3} {g:.3} {b:.3}\n"))
-					.unwrap();
-				// TODO: export textures
-				// mtl.write_fmt(format_args!("map_Kd {texture}.png\n")).unwrap();
-
-				obj.write_fmt(format_args!("usemtl {texture}{texId}\n"))
-					.unwrap();
-				for face in faces {
-					let baseVert = vertIndex;
-					vertIndex += 4;
-					obj.write_fmt(format_args!(
-						"f {0}/{0} {1}/{1} {2}/{2}\nf {1}/{1} {3}/{3} {2}/{2}\n",
-						baseVert + 0,
-						baseVert + 1,
-						baseVert + 2,
-						baseVert + 3
-					))
-					.unwrap();
-					for vert in face.verts {
-						obj.write_fmt(format_args!(
-							"v {:.3} {:.3} {:.3}\n",
-							vert.pos[0], vert.pos[1], vert.pos[2]
-						))
-						.unwrap();
-						obj.write_fmt(format_args!("vt {:.3} {:.3}\n", vert.uv[0], vert.uv[1]))
-							.unwrap();
-					}
-				}
-			}
-		}
-
-		(obj, mtl)
-	}
-
 	pub fn texture(&self, slot: &str) -> ResourceLocation {
 		let res = (|| {
 			let mut tex = self.textureSlots.get(slot)?;
@@ -402,38 +290,18 @@ impl Model {
 		})();
 		res.unwrap_or_else(|| "cuview:missing_texture".into())
 	}
-
-	pub fn slot_index(&self, slot: &str) -> u32 {
-		self.textureSlots
-			.keys()
-			.copied()
-			.enumerate()
-			.find_map(|(i, v)| (slot == v.as_str()).then_some(i as u32))
-			.unwrap_or(0)
-	}
-
-	pub fn faces<'a>(&self, cache: &ModelCache) -> Shared<Vec<Face>> {
-		match &self.faces {
-			Faces::Specified(faces) => faces.clone(),
-			Faces::Inherited(src) => {
-				let src = cache.get(src).unwrap();
-				match &src.faces {
-					Faces::Inherited(_) => panic!(),
-					Faces::Specified(faces) => faces.clone(),
-				}
-			},
-		}
-	}
-
-	pub fn transformed(&self, cache: &ModelCache, mat: Mat4) -> Self {
-		let mut res = self.clone();
-		let mut faces = res.faces(cache).borrow().clone();
-		for face in &mut faces {
+	
+	pub fn transform(&mut self, mat: Mat4) {
+		for face in &mut self.faces {
 			for vert in &mut face.verts {
 				vert.pos = mat.transform_point3(vert.pos.into()).into();
 			}
 		}
-		res.faces = Faces::Specified(faces.into());
+	}
+	
+	pub fn transformed(&self, mat: Mat4) -> Self {
+		let mut res = self.clone();
+		res.transform(mat);
 		res
 	}
 }
@@ -512,7 +380,6 @@ impl ModelCache {
 
 		let mut cache = Self(BTreeMap::new());
 
-		let emptyFaces = Faces::Specified(Shared::new(vec![]));
 		for id in placeholders {
 			cache.insert(
 				id,
@@ -520,7 +387,7 @@ impl ModelCache {
 					id,
 					parent: None,
 					textureSlots: BTreeMap::new(),
-					faces: emptyFaces.clone(),
+					faces: vec![],
 				},
 			);
 		}
@@ -561,9 +428,9 @@ impl ModelCache {
 					}
 				}
 
-				let mut faces: Faces;
+				let mut faces: Vec<Face>;
 				if let Some(elems) = &json.elements {
-					let mut newFaces = Vec::with_capacity(elems.len() * 6);
+					faces = Vec::with_capacity(elems.len() * 6);
 					for elem in elems {
 						let cube =
 							Cube::new(Vec3::from(elem.from) / 16.0, Vec3::from(elem.to) / 16.0);
@@ -576,38 +443,14 @@ impl ModelCache {
 									vert.uv = (mins + (maxs - mins) * Vec2::from(vert.uv)).into();
 								}
 							}
-							newFaces.push(Face {
+							faces.push(Face {
 								texture: face.texture.as_str().into(),
 								verts,
 							});
 						}
 					}
-					faces = Faces::Specified(newFaces.into());
 				} else {
-					let facesSrc = (|| {
-						if let Some(parent) = parent {
-							let mut src = parent;
-							while src.faces.inherited() {
-								if let Some(parentLoc) = src.parent {
-									if let Some(parent) = cache.get(&parentLoc) {
-										src = parent;
-									} else {
-										break;
-									}
-								} else {
-									break;
-								}
-							}
-
-							if !src.faces.inherited() {
-								return Some(src.id);
-							}
-							None
-						} else {
-							None
-						}
-					})();
-					faces = Faces::Inherited(facesSrc.unwrap_or_else(|| "cuview:missing_model".into()));
+					faces = parent.map(|v| v.faces.clone()).unwrap_or_else(|| vec![]);
 				}
 
 				newModels.push((
@@ -620,6 +463,7 @@ impl ModelCache {
 					},
 				));
 			}
+			
 			for (loc, model) in newModels.drain(..) {
 				cache.insert(loc, model);
 				remaining.remove(&loc);
@@ -653,100 +497,55 @@ impl ModelCache {
 
 	pub fn geometry_buffer(&self, cartographer: &Cartographer) -> GeometryBuffer {
 		let mut vertices = vec![];
-		let mut vertexMap = HashMap::new();
-		let mut texturesForSlots = vec![];
-		let mut baseSlots = HashMap::new();
+		let mut modelInfo = HashMap::new();
 
-		let mut inheritingModels = HashSet::new();
 		let mut vertexId = 0;
-		let mut slotId = 0;
 		for (&id, model) in self.0.iter() {
-			baseSlots.insert(id, texturesForSlots.len() as u32);
-			match &model.faces {
-				Faces::Inherited(baseId) => {
-					let base = self.0.get(baseId).ok_or(anyhow!("{baseId}")).unwrap();
-					for slot in base.textureSlots.keys() {
-						let tex = model.texture(slot.as_str());
-						let tid = cartographer.id_for_texture(tex).unwrap_or(TextureId {
-							atlas: 0,
-							texture: 0,
-						}); // FIXME: missing texture
-						texturesForSlots.push(tid.packed());
-					}
-					
-					inheritingModels.insert(id);
-					continue;
-				},
-				Faces::Specified(faces) => {
-					for slot in model.textureSlots.keys() {
-						let tex = model.texture(slot.as_str());
-						let tid = cartographer.id_for_texture(tex).unwrap_or(TextureId {
-							atlas: 0,
-							texture: 0,
-						}); // FIXME: missing texture
-						texturesForSlots.push(tid.packed());
-					}
-					
-					let faces = faces.borrow();
-					let baseVertex = vertexId;
-					let numVertices = faces.len() * 6;
-					vertexId += numVertices;
-					vertices.extend(faces.iter().flat_map(|face| {
-						let slot = model.slot_index(match face.texture {
-							Texture::Asset(_) => panic!(),
-							Texture::Slot(name) => name.as_str(),
-						});
-						[
-							// expand triangle strip to pair of tris with slot
-							FullVertex {
-								vert: face.verts[0],
-								slot,
-							},
-							FullVertex {
-								vert: face.verts[1],
-								slot,
-							},
-							FullVertex {
-								vert: face.verts[2],
-								slot,
-							},
-							FullVertex {
-								vert: face.verts[1],
-								slot,
-							},
-							FullVertex {
-								vert: face.verts[3],
-								slot,
-							},
-							FullVertex {
-								vert: face.verts[2],
-								slot,
-							},
-						]
-					}));
-					vertexMap.insert(id, (baseVertex, numVertices));
-				},
-			}
-		}
-
-		for id in inheritingModels {
-			let model = self.0.get(&id).unwrap();
-			match &model.faces {
-				Faces::Specified(_) => unreachable!(),
-				Faces::Inherited(parent) => {
-					if let Some(info) = vertexMap.get(parent).cloned() {
-						vertexMap.insert(id, info);
-					}
-					// TODO: logging `None`s?
-				},
-			}
+			let baseVertex = vertexId;
+			let numVertices = model.faces.len() * 6;
+			vertexId += numVertices;
+			vertices.extend(model.faces.iter().flat_map(|face| {
+				let slot = match face.texture {
+					Texture::Asset(_) => panic!(),
+					Texture::Slot(name) => name.as_str(),
+				};
+				let texId = cartographer.id_for_texture(model.texture(slot)).unwrap_or_else(|| {
+					cartographer.id_for_texture("cuview:missing_texture".into()).expect("Missing texture is itself missing! D:")
+				}).packed();
+				[
+					// expand triangle strip to pair of tris with slot
+					FullVertex {
+						vert: face.verts[0],
+						texId,
+					},
+					FullVertex {
+						vert: face.verts[1],
+						texId,
+					},
+					FullVertex {
+						vert: face.verts[2],
+						texId,
+					},
+					FullVertex {
+						vert: face.verts[1],
+						texId,
+					},
+					FullVertex {
+						vert: face.verts[3],
+						texId,
+					},
+					FullVertex {
+						vert: face.verts[2],
+						texId,
+					},
+				]
+			}));
+			modelInfo.insert(id, (baseVertex, numVertices));
 		}
 
 		GeometryBuffer {
 			vertices,
-			vertexMap,
-			texturesForSlots,
-			baseSlots,
+			modelInfo,
 		}
 	}
 }
@@ -768,11 +567,7 @@ impl DerefMut for ModelCache {
 pub struct GeometryBuffer {
 	pub vertices: Vec<FullVertex>,
 
-	pub vertexMap: HashMap<ResourceLocation, (usize, usize)>,
-
-	pub texturesForSlots: Vec<u32>,
-
-	pub baseSlots: HashMap<ResourceLocation, u32>,
+	pub modelInfo: HashMap<ResourceLocation, (usize, usize)>,
 }
 
 /**
@@ -893,4 +688,98 @@ pub fn models_for_states(
 	}
 
 	modelsForState
+}
+
+pub fn export_wavefront(
+	models: &[(&str, &Model)],
+	mtlFilename: &str,
+) -> (String, String) {
+	const palette: &[u32] = &[
+		0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x7FFF00,
+		0xFF7F00, 0x007FFF, 0x00FF7F, 0x7F00FF, 0xFF007F,
+	];
+
+	let mut obj = String::new();
+	let mut mtl = String::new();
+	obj.write_fmt(format_args!("mtllib {mtlFilename}\n\n"))
+		.unwrap();
+
+	let mut vertIndex = 1;
+	let mut texIndex = 0;
+	let mut slotCounts: HashMap<IString, usize> = HashMap::new();
+	for (index, (modelName, model)) in models.iter().copied().enumerate() {
+		if index > 0 {
+			obj.write_str("\n").unwrap();
+		}
+		obj.write_fmt(format_args!("o {modelName}\n")).unwrap();
+
+		let mut texgroups = HashMap::new();
+		for face in model.faces.iter() {
+			let texName: String = match face.texture {
+				Texture::Slot(name) => model.texture(&name),
+				Texture::Asset(loc) => loc,
+			}
+			.into();
+			let list = texgroups
+				.entry(texName)
+				.or_insert_with(|| Vec::with_capacity(64));
+			list.push(face);
+		}
+
+		for (texture, faces) in texgroups {
+			let texture = texture
+				.chars()
+				.map(|c| match c {
+					'a' ..= 'z' | 'A' ..= 'Z' => c,
+					_ => '_',
+				})
+				.collect::<String>()
+				.into();
+			let texId = *slotCounts
+				.entry(texture)
+				.and_modify(|v| *v += 1)
+				.or_insert(0);
+			mtl.write_fmt(format_args!("newmtl {texture}{texId}\n"))
+				.unwrap();
+			mtl.write_fmt(format_args!("d 1\nNs 0\n")).unwrap();
+
+			let color = palette[texIndex % palette.len()];
+			texIndex += 1;
+			let (r, g, b) = (
+				((color & 0xFF0000) >> 16) as f32 / 255.0,
+				((color & 0x00FF00) >> 8) as f32 / 255.0,
+				((color & 0x0000FF) >> 0) as f32 / 255.0,
+			);
+			mtl.write_fmt(format_args!("Kd {r:.3} {g:.3} {b:.3}\n"))
+				.unwrap();
+			// TODO: export textures
+			// mtl.write_fmt(format_args!("map_Kd {texture}.png\n")).unwrap();
+
+			obj.write_fmt(format_args!("usemtl {texture}{texId}\n"))
+				.unwrap();
+			for face in faces {
+				let baseVert = vertIndex;
+				vertIndex += 4;
+				obj.write_fmt(format_args!(
+					"f {0}/{0} {1}/{1} {2}/{2}\nf {1}/{1} {3}/{3} {2}/{2}\n",
+					baseVert + 0,
+					baseVert + 1,
+					baseVert + 2,
+					baseVert + 3
+				))
+				.unwrap();
+				for vert in face.verts {
+					obj.write_fmt(format_args!(
+						"v {:.3} {:.3} {:.3}\n",
+						vert.pos[0], vert.pos[1], vert.pos[2]
+					))
+					.unwrap();
+					obj.write_fmt(format_args!("vt {:.3} {:.3}\n", vert.uv[0], vert.uv[1]))
+						.unwrap();
+				}
+			}
+		}
+	}
+
+	(obj, mtl)
 }

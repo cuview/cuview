@@ -9,7 +9,7 @@ struct VIn {
 	uv: vec2<f32>,
 	
 	@location(2)
-	texSlot: u32,
+	texId: u32,
 }
 
 struct VOut {
@@ -38,10 +38,6 @@ var<storage, read> atlasDiameters: array<u32>;
 
 @group(0)
 @binding(2)
-var<storage, read> texturesForSlot: array<u32>;
-
-@group(0)
-@binding(3)
 var atlas: texture_2d_array<f32>;
 
 var<push_constant> section: i32;
@@ -66,18 +62,15 @@ fn translation(blockId: u32) -> vec3<f32> {
 
 @vertex
 fn vsMain(in: VIn) -> VOut {
-	let blockId = in.instance & 0xFFFu;
-	let baseSlot = in.instance >> 12u;
-	
 	let model = mat4x4<f32>(
 		vec4<f32>(1.0, 0.0, 0.0, 0.0),
 		vec4<f32>(0.0, 1.0, 0.0, 0.0),
 		vec4<f32>(0.0, 0.0, 1.0, 0.0),
-		vec4<f32>(translation(blockId), 1.0),
+		vec4<f32>(translation(in.instance), 1.0),
 	);
 	let pos = camera.projection * camera.view * model * vec4<f32>(in.pos, 1.0);
 	
-	let texId = texturesForSlot[baseSlot + in.texSlot];
+	let texId = in.texId;
 	let texLayer = (texId & (0xFFu << 24u)) >> 24u;
 	let texId = texId & 0xFFFFFFu;
 	
@@ -102,7 +95,7 @@ fn vsMain(in: VIn) -> VOut {
 }
 
 @group(0)
-@binding(4)
+@binding(3)
 var atlasSampler: sampler;
 
 @fragment
