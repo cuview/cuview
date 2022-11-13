@@ -10,7 +10,7 @@ use crate::loader::common::AnvilRegion;
 use crate::types::blockstate::{BlockState, BlockStateBuilder};
 use crate::types::coords::{ChunkPos, RegionPos};
 use crate::types::shared::{Shared, WeakShared};
-use crate::types::{ResourceLocation, BlockPos};
+use crate::types::{BlockPos, ResourceLocation};
 
 pub struct World {
 	this: WeakShared<Self>,
@@ -245,10 +245,16 @@ impl Chunk {
 	pub fn get_section(&self, y: i8) -> Option<Shared<ChunkSection>> {
 		self.sections.get(&y).map(Shared::clone)
 	}
-	
+
 	pub fn sections(&self) -> Range<i8> {
 		let min = self.sections.keys().copied().min().unwrap_or(0);
-		let max = self.sections.keys().copied().max().map(|v| v + 1).unwrap_or(0);
+		let max = self
+			.sections
+			.keys()
+			.copied()
+			.max()
+			.map(|v| v + 1)
+			.unwrap_or(0);
 		min .. max
 	}
 }
@@ -288,7 +294,7 @@ impl ChunkSection {
 	pub fn pos(&self) -> (ChunkPos, i8) {
 		(self.pos, self.y)
 	}
-	
+
 	pub fn palette(&self) -> Shared<Palette> {
 		self.palette.clone()
 	}
@@ -315,25 +321,28 @@ impl ChunkSection {
 	pub fn chunk(&self) -> Shared<Chunk> {
 		self.chunk.clone()
 	}
-	
+
 	fn index_of(&self, pos: BlockPos) -> usize {
 		debug_assert_eq!(ChunkPos::from(pos), self.pos);
 		debug_assert_eq!(pos.section(), self.y);
 		let pos = pos.chunk_relative();
-		((pos.y * ChunkPos::diameterBlocks.pow(2)) + (pos.z * ChunkPos::diameterBlocks) + pos.x) as usize
+		((pos.y * ChunkPos::diameterBlocks.pow(2)) + (pos.z * ChunkPos::diameterBlocks) + pos.x)
+			as usize
 	}
-	
+
 	pub fn get_block(&self, pos: BlockPos) -> BlockState {
 		let id = self.blocks[self.index_of(pos)];
 		let palette = self.palette.borrow();
-		palette.get_state(id).unwrap_or_else(|| panic!("{pos:?} {id} {palette:?}"))
+		palette
+			.get_state(id)
+			.unwrap_or_else(|| panic!("{pos:?} {id} {palette:?}"))
 	}
-	
+
 	pub fn set_block(&mut self, pos: BlockPos, state: BlockState) {
 		let index = self.index_of(pos);
 		self.blocks[index] = self.palette.borrow().get_id(state).unwrap();
 	}
-	
+
 	pub fn fill_blocks(&mut self, palettedBlocks: impl Iterator<Item = u32>) {
 		let mut len = 0;
 		for (pos, id) in self.pos.blocks_in_section(self.y).zip(palettedBlocks) {
@@ -342,7 +351,7 @@ impl ChunkSection {
 			self.blocks[index] = id;
 		}
 		debug_assert_eq!(len, 4096);
- 	}
+	}
 }
 
 impl Debug for ChunkSection {

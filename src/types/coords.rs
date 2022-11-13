@@ -1,4 +1,5 @@
-use std::{str::FromStr, num::ParseIntError};
+use std::num::ParseIntError;
+use std::str::FromStr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BlockPos {
@@ -48,7 +49,7 @@ fn test_blockpos() {
 
 	let pos = BlockPos::new(-1, 0, 0);
 	assert!(pos.chunk_relative() == BlockPos::new(15, 0, 0));
-	
+
 	let pos = BlockPos::from_str("0,0,0");
 	assert!(pos == Ok(BlockPos::new(0, 0, 0)));
 	let pos = BlockPos::from_str("-1, -1, -1");
@@ -163,7 +164,7 @@ fn test_chunkpos() {
 	let sectionBlocks: Vec<_> = pos.blocks_in_section(-1).collect();
 	assert!(sectionBlocks.first().unwrap().y == -16);
 	assert!(sectionBlocks.last().unwrap().y == -1);
-	
+
 	let pos = ChunkPos::from_str("0,0");
 	assert!(pos == Ok(ChunkPos::new(0, 0)));
 	let pos = ChunkPos::from_str("-1, -1");

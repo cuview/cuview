@@ -1,22 +1,25 @@
-use std::collections::{HashMap, HashSet, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Context;
-use bytemuck::{Zeroable, Pod};
-use glam::{Vec2, Vec3, Mat4};
+use anyhow::{Context, anyhow};
+use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec2, Vec3};
 use serde::Deserialize;
 
+use super::texture::{Cartographer, TextureId};
 use crate::jarfs::JarFS;
 use crate::loader::model::{
 	BlockStateModel,
+	Element,
 	JsonBlockState,
+	JsonModel,
 	MultipartCase,
 	MultipartWhen,
-	OneOrMany, JsonModel, Element,
+	OneOrMany,
 };
 use crate::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
 use crate::types::resource_location::ResourceKind;
@@ -222,6 +225,21 @@ pub struct Vertex {
 	pub uv: [f32; 2],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Zeroable, Pod)]
+pub struct FullVertex {
+	pub vert: Vertex,
+	pub slot: u32,
+}
+
+impl Deref for FullVertex {
+	type Target = Vertex;
+
+	fn deref(&self) -> &Self::Target {
+		&self.vert
+	}
+}
+
 #[derive(Clone, Copy)]
 pub enum Texture {
 	Slot(IString),
@@ -263,12 +281,16 @@ impl Faces {
 pub struct Model {
 	id: ResourceLocation,
 	parent: Option<ResourceLocation>,
-	textureSlots: HashMap<IString, Texture>,
+	textureSlots: BTreeMap<IString, Texture>,
 	faces: Faces,
 }
 
 impl Model {
-	pub fn into_wavefront(cache: &ModelCache, models: &[(&str, Self)], mtlFilename: &str) -> (String, String) {
+	pub fn into_wavefront(
+		cache: &ModelCache,
+		models: &[(&str, Self)],
+		mtlFilename: &str,
+	) -> (String, String) {
 		const palette: &[u32] = &[
 			0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x7FFF00,
 			0xFF7F00, 0x007FFF, 0x00FF7F, 0x7F00FF, 0xFF007F,
@@ -295,13 +317,11 @@ impl Model {
 				let texName: String = match face.texture {
 					Texture::Slot(name) => model.texture(&name),
 					Texture::Asset(loc) => loc,
-				}.into();
-				let list = if let Some(v) = texgroups.get_mut(&texName) {
-					v
-				} else {
-					texgroups.insert(texName.clone(), Vec::with_capacity(128));
-					texgroups.get_mut(&texName).unwrap()
-				};
+				}
+				.into();
+				let list = texgroups
+					.entry(texName)
+					.or_insert_with(|| Vec::with_capacity(64));
 				list.push(face);
 			}
 
@@ -314,13 +334,10 @@ impl Model {
 					})
 					.collect::<String>()
 					.into();
-				let texId = if let Some(&v) = slotCounts.get(&texture) {
-					slotCounts.insert(texture, v + 1);
-					v
-				} else {
-					slotCounts.insert(texture, 1);
-					0usize
-				};
+				let texId = *slotCounts
+					.entry(texture)
+					.and_modify(|v| *v += 1)
+					.or_insert(0);
 				mtl.write_fmt(format_args!("newmtl {texture}{texId}\n"))
 					.unwrap();
 				mtl.write_fmt(format_args!("d 1\nNs 0\n")).unwrap();
@@ -365,22 +382,36 @@ impl Model {
 
 		(obj, mtl)
 	}
-	
+
 	pub fn texture(&self, slot: &str) -> ResourceLocation {
 		let res = (|| {
 			let mut tex = self.textureSlots.get(slot)?;
 			for _ in 0 .. 100 {
 				match tex {
 					Texture::Asset(loc) => return Some(*loc),
-					Texture::Slot(name) => { tex = self.textureSlots.get(name)?; },
+					Texture::Slot(name) => {
+						tex = self.textureSlots.get(name)?;
+					},
 				}
 			}
-			eprintln!("lookup of texture slot `{}` on model `{}` exceeded 100 iterations", slot, self.id);
+			eprintln!(
+				"lookup of texture slot `{}` on model `{}` exceeded 100 iterations",
+				slot, self.id
+			);
 			None
 		})();
 		res.unwrap_or_else(|| "cuview:missing_texture".into())
 	}
-	
+
+	pub fn slot_index(&self, slot: &str) -> u32 {
+		self.textureSlots
+			.keys()
+			.copied()
+			.enumerate()
+			.find_map(|(i, v)| (slot == v.as_str()).then_some(i as u32))
+			.unwrap_or(0)
+	}
+
 	pub fn faces<'a>(&self, cache: &ModelCache) -> Shared<Vec<Face>> {
 		match &self.faces {
 			Faces::Specified(faces) => faces.clone(),
@@ -390,10 +421,10 @@ impl Model {
 					Faces::Inherited(_) => panic!(),
 					Faces::Specified(faces) => faces.clone(),
 				}
-			}
+			},
 		}
 	}
-	
+
 	pub fn transformed(&self, cache: &ModelCache, mat: Mat4) -> Self {
 		let mut res = self.clone();
 		let mut faces = res.faces(cache).borrow().clone();
@@ -407,34 +438,44 @@ impl Model {
 	}
 }
 
-pub struct ModelCache(HashMap<ResourceLocation, Model>);
+pub struct ModelCache(BTreeMap<ResourceLocation, Model>);
 
 impl ModelCache {
 	const placeholderModelIds: &'static [&'static str] = &[
+		"cuview:missing_model",
+		
+		"block/entity",
 		"builtin/entity",
+		"builtin/generated",
+		"forge:block/default",
+		"forge:item/default",
 		"twilightforest:util/block_no_ao",
 	];
-	
+
 	pub fn new() -> Self {
-		ModelCache(HashMap::new())
+		ModelCache(BTreeMap::new())
 	}
-	
+
 	pub fn from_jsons(fs: &JarFS) -> Self {
 		let parse_model = |path: &Path| {
 			let (loc, _) = ResourceLocation::from_path(&path);
 			let ctx = format!("parsing json model `{loc}` ({path:?})");
-			// first parsing as a `Value` allows duplicate fields (some mods have copypasta'd models...)
-			let json: serde_json::Value = serde_json::from_str(&fs.read_text(&path).context(ctx.clone()).unwrap()).context(ctx.clone()).unwrap();
+			// first parsing as a `Value` allows duplicate fields (some mods have
+			// copypasta'd models...)
+			let json: serde_json::Value =
+				serde_json::from_str(&fs.read_text(&path).context(ctx.clone()).unwrap())
+					.context(ctx.clone())
+					.unwrap();
 			let model: JsonModel = serde_json::from_value(json).context(ctx).unwrap();
 			(loc, model)
 		};
-		
+
 		let mut jsons = HashMap::new();
 		for path in fs.files(ResourceKind::Model) {
 			let (loc, model) = parse_model(&path);
 			jsons.insert(loc, model);
 		}
-		
+
 		// load any inherited models that lie outside the block models directory
 		let placeholders: Vec<ResourceLocation> = Self::placeholderModelIds
 			.iter()
@@ -443,17 +484,18 @@ impl ModelCache {
 			.collect();
 		let mut parents: HashSet<_> = jsons
 			.values()
-			.filter_map(|m| m
-				.parent
-				.and_then(|id| (!jsons.contains_key(&id) && !placeholders.contains(&id)).then_some(id))
-			)
+			.filter_map(|m| {
+				m.parent.and_then(|id| {
+					(!jsons.contains_key(&id) && !placeholders.contains(&id)).then_some(id)
+				})
+			})
 			.collect();
 		let mut newParents = HashSet::new();
 		loop {
 			if parents.len() == 0 {
 				break;
 			}
-			
+
 			for &parent in &parents {
 				let path = parent.into_path(ResourceKind::Model);
 				let (_, model) = parse_model(&path);
@@ -467,19 +509,22 @@ impl ModelCache {
 			parents.clear();
 			std::mem::swap(&mut parents, &mut newParents);
 		}
-		
-		let mut cache = Self(HashMap::new());
-		
+
+		let mut cache = Self(BTreeMap::new());
+
 		let emptyFaces = Faces::Specified(Shared::new(vec![]));
 		for id in placeholders {
-			cache.insert(id, Model {
+			cache.insert(
 				id,
-				parent: None,
-				textureSlots: HashMap::new(),
-				faces: emptyFaces.clone(),
-			});
+				Model {
+					id,
+					parent: None,
+					textureSlots: BTreeMap::new(),
+					faces: emptyFaces.clone(),
+				},
+			);
 		}
-		
+
 		let mut remaining: HashSet<_> = jsons.keys().cloned().collect();
 		let mut newModels = Vec::with_capacity(remaining.len());
 		let mut remainingLen = usize::MAX;
@@ -507,18 +552,21 @@ impl ModelCache {
 				let json = jsons.get(&loc).unwrap();
 				let parent = json.parent.map(|p| cache.get(&p)).flatten();
 
-				let mut textureSlots = parent.map(|p| p.textureSlots.clone()).unwrap_or_else(|| HashMap::new());
+				let mut textureSlots = parent
+					.map(|p| p.textureSlots.clone())
+					.unwrap_or_else(|| BTreeMap::new());
 				if let Some(textures) = &json.textures {
 					for (k, v) in textures {
 						textureSlots.insert(k.clone(), v.as_str().into());
 					}
 				}
-				
+
 				let mut faces: Faces;
 				if let Some(elems) = &json.elements {
 					let mut newFaces = Vec::with_capacity(elems.len() * 6);
 					for elem in elems {
-						let cube = Cube::new(Vec3::from(elem.from) / 16.0, Vec3::from(elem.to) / 16.0);
+						let cube =
+							Cube::new(Vec3::from(elem.from) / 16.0, Vec3::from(elem.to) / 16.0);
 						for (&dir, face) in &elem.faces {
 							let mut verts = cube.vertices(dir);
 							if let Some(rect) = face.uv {
@@ -536,36 +584,41 @@ impl ModelCache {
 					}
 					faces = Faces::Specified(newFaces.into());
 				} else {
-					let facesSrc = (|| if let Some(parent) = parent {
-						let mut src = parent;
-						while src.faces.inherited() {
-							if let Some(parentLoc) = src.parent {
-								if let Some(parent) = cache.get(&parentLoc) {
-									src = parent;
+					let facesSrc = (|| {
+						if let Some(parent) = parent {
+							let mut src = parent;
+							while src.faces.inherited() {
+								if let Some(parentLoc) = src.parent {
+									if let Some(parent) = cache.get(&parentLoc) {
+										src = parent;
+									} else {
+										break;
+									}
 								} else {
 									break;
 								}
-							} else {
-								break;
 							}
+
+							if !src.faces.inherited() {
+								return Some(src.id);
+							}
+							None
+						} else {
+							None
 						}
-						
-						if !src.faces.inherited() {
-							return Some(src.id);
-						}
-						None
-					} else {
-						None
 					})();
-					faces = Faces::Inherited(facesSrc.unwrap_or_else(|| "cuview:error".into()));
+					faces = Faces::Inherited(facesSrc.unwrap_or_else(|| "cuview:missing_model".into()));
 				}
 
-				newModels.push((loc, Model {
-					id: loc,
-					parent: json.parent,
-					textureSlots,
-					faces,
-				}));
+				newModels.push((
+					loc,
+					Model {
+						id: loc,
+						parent: json.parent,
+						textureSlots,
+						faces,
+					},
+				));
 			}
 			for (loc, model) in newModels.drain(..) {
 				cache.insert(loc, model);
@@ -574,60 +627,132 @@ impl ModelCache {
 		}
 		cache
 	}
-	
-	pub fn geometry_buffer(&self) -> GeometryBuffer {
+
+	pub fn models_using_texture(
+		&self,
+		targetTexure: ResourceLocation,
+	) -> HashSet<ResourceLocation> {
+		self.values()
+			.flat_map(|m| m.textureSlots.values().map(|t| (m.id, t)))
+			.filter_map(|(modelId, tex)| match tex {
+				Texture::Asset(id) => (*id == targetTexure).then_some(modelId),
+				_ => None,
+			})
+			.collect()
+	}
+
+	pub fn all_block_textures(&self) -> HashSet<ResourceLocation> {
+		self.values()
+			.flat_map(|m| m.textureSlots.values())
+			.filter_map(|t| match t {
+				Texture::Slot(_) => None,
+				Texture::Asset(id) => Some(*id),
+			})
+			.collect()
+	}
+
+	pub fn geometry_buffer(&self, cartographer: &Cartographer) -> GeometryBuffer {
 		let mut vertices = vec![];
-		let mut modelMap = HashMap::new();
+		let mut vertexMap = HashMap::new();
+		let mut texturesForSlots = vec![];
+		let mut baseSlots = HashMap::new();
+
 		let mut inheritingModels = HashSet::new();
-		
 		let mut vertexId = 0;
+		let mut slotId = 0;
 		for (&id, model) in self.0.iter() {
+			baseSlots.insert(id, texturesForSlots.len() as u32);
 			match &model.faces {
-				Faces::Inherited(_) => {
+				Faces::Inherited(baseId) => {
+					let base = self.0.get(baseId).ok_or(anyhow!("{baseId}")).unwrap();
+					for slot in base.textureSlots.keys() {
+						let tex = model.texture(slot.as_str());
+						let tid = cartographer.id_for_texture(tex).unwrap_or(TextureId {
+							atlas: 0,
+							texture: 0,
+						}); // FIXME: missing texture
+						texturesForSlots.push(tid.packed());
+					}
+					
 					inheritingModels.insert(id);
 					continue;
 				},
 				Faces::Specified(faces) => {
+					for slot in model.textureSlots.keys() {
+						let tex = model.texture(slot.as_str());
+						let tid = cartographer.id_for_texture(tex).unwrap_or(TextureId {
+							atlas: 0,
+							texture: 0,
+						}); // FIXME: missing texture
+						texturesForSlots.push(tid.packed());
+					}
+					
 					let faces = faces.borrow();
 					let baseVertex = vertexId;
 					let numVertices = faces.len() * 6;
 					vertexId += numVertices;
-					vertices.extend(faces.iter().flat_map(|face| [
-						// expand triangle strip to pair of tris
-						face.verts[0],
-						face.verts[1],
-						face.verts[2],
-						face.verts[1],
-						face.verts[3],
-						face.verts[2],
-					]));
-					modelMap.insert(id, (baseVertex, numVertices));
-				}
+					vertices.extend(faces.iter().flat_map(|face| {
+						let slot = model.slot_index(match face.texture {
+							Texture::Asset(_) => panic!(),
+							Texture::Slot(name) => name.as_str(),
+						});
+						[
+							// expand triangle strip to pair of tris with slot
+							FullVertex {
+								vert: face.verts[0],
+								slot,
+							},
+							FullVertex {
+								vert: face.verts[1],
+								slot,
+							},
+							FullVertex {
+								vert: face.verts[2],
+								slot,
+							},
+							FullVertex {
+								vert: face.verts[1],
+								slot,
+							},
+							FullVertex {
+								vert: face.verts[3],
+								slot,
+							},
+							FullVertex {
+								vert: face.verts[2],
+								slot,
+							},
+						]
+					}));
+					vertexMap.insert(id, (baseVertex, numVertices));
+				},
 			}
 		}
-		
+
 		for id in inheritingModels {
 			let model = self.0.get(&id).unwrap();
 			match &model.faces {
 				Faces::Specified(_) => unreachable!(),
 				Faces::Inherited(parent) => {
-					if let Some(info) = modelMap.get(parent).cloned() {
-						modelMap.insert(id, info);
+					if let Some(info) = vertexMap.get(parent).cloned() {
+						vertexMap.insert(id, info);
 					}
 					// TODO: logging `None`s?
-				}
+				},
 			}
 		}
-		
+
 		GeometryBuffer {
 			vertices,
-			modelMap
+			vertexMap,
+			texturesForSlots,
+			baseSlots,
 		}
 	}
 }
 
 impl Deref for ModelCache {
-	type Target = HashMap<ResourceLocation, Model>;
+	type Target = BTreeMap<ResourceLocation, Model>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
@@ -641,9 +766,13 @@ impl DerefMut for ModelCache {
 }
 
 pub struct GeometryBuffer {
-	pub vertices: Vec<Vertex>,
-	
-	pub modelMap: HashMap<ResourceLocation, (usize, usize)>
+	pub vertices: Vec<FullVertex>,
+
+	pub vertexMap: HashMap<ResourceLocation, (usize, usize)>,
+
+	pub texturesForSlots: Vec<u32>,
+
+	pub baseSlots: HashMap<ResourceLocation, u32>,
 }
 
 /**
@@ -755,7 +884,8 @@ pub fn models_for_states(
 
 		if models.len() == 0 || json.is_none() {
 			if json.is_some() {
-				// eprintln!("Blockstate JSON has no mapping for state {state}");
+				// eprintln!("Blockstate JSON has no mapping for state
+				// {state}");
 			}
 			models.push(vec![missing]);
 		}

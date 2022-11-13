@@ -114,9 +114,9 @@ impl From<&str> for ResourceLocation {
 }
 
 impl From<String> for ResourceLocation {
-    fn from(s: String) -> Self {
-        s.as_str().into()
-    }
+	fn from(s: String) -> Self {
+		s.as_str().into()
+	}
 }
 
 impl From<ResourceLocation> for String {

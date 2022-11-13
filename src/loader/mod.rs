@@ -29,10 +29,10 @@ impl WorldWrangler {
 		Ok(Self {
 			rootDir: worldRootDir.into(),
 			loader,
-			world
+			world,
 		})
 	}
-	
+
 	pub fn probe_dimensions(&self) -> Vec<(ResourceLocation, PathBuf)> {
 		let mut dimensions = vec![
 			("overworld".into(), self.rootDir.join(".")),
@@ -42,7 +42,7 @@ impl WorldWrangler {
 		dimensions.extend(self.loader.probe_mod_dimensions(&self.world));
 		dimensions
 	}
-	
+
 	pub fn probe_dimension(&self, id: ResourceLocation) -> Option<(ResourceLocation, PathBuf)> {
 		for (other, path) in self.probe_dimensions() {
 			if id == other {
@@ -51,18 +51,19 @@ impl WorldWrangler {
 		}
 		None
 	}
-	
+
 	pub fn load_dimension(&self, probed: (ResourceLocation, PathBuf)) -> Shared<Dimension> {
 		let (id, root) = probed;
 		let dimension = self.world.borrow_mut().new_dimension(id, &root);
 		self.loader.load_dimension(&dimension, id, &root);
 		dimension
 	}
-	
+
 	pub fn probe_regions(&self, dimension: &Shared<Dimension>) -> Vec<RegionPos> {
 		let mut res = Vec::with_capacity(32usize.pow(2));
 		let regionDir = dimension.borrow().region_dir();
-		let dir = read_dir(&regionDir).expect(&format!("could not read region dir `{regionDir:?}`"));
+		let dir =
+			read_dir(&regionDir).expect(&format!("could not read region dir `{regionDir:?}`"));
 		for entry in dir {
 			if entry.is_err() {
 				continue;
@@ -97,24 +98,21 @@ impl WorldWrangler {
 		}
 		res
 	}
-	
+
 	pub fn load_region(&self, dimension: &Shared<Dimension>, pos: RegionPos) -> Shared<Region> {
 		let region = dimension.borrow_mut().new_region(pos);
 		self.loader.load_region(&region, pos);
 		region
 	}
-	
+
 	pub fn probe_chunks(&self, region: &Shared<Region>) -> Vec<ChunkPos> {
 		let (anvil, pos) = {
 			let region = region.borrow();
 			(region.anvil(), region.pos())
 		};
-		pos
-			.chunks()
-			.filter(|pos| !anvil.is_empty(*pos))
-			.collect()
+		pos.chunks().filter(|pos| !anvil.is_empty(*pos)).collect()
 	}
-	
+
 	pub fn load_chunk(&self, region: &Shared<Region>, pos: ChunkPos) -> Shared<Chunk> {
 		let (anvil, chunk) = {
 			let mut region = region.borrow_mut();
@@ -127,7 +125,7 @@ impl WorldWrangler {
 
 pub trait WorldLoader {
 	fn load_world(&self, world: &Shared<World>) {}
-	
+
 	fn probe_mod_dimensions(&self, world: &Shared<World>) -> Vec<(ResourceLocation, PathBuf)> {
 		vec![]
 	}

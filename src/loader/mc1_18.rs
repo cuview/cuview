@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer};
 
-use super::common::{AnvilRegion, biterator};
+use super::common::{biterator, AnvilRegion};
 use super::WorldLoader;
 use crate::types::blockstate::BlockStateBuilder;
 use crate::types::shared::Shared;
@@ -12,28 +12,39 @@ use crate::world;
 struct Loader;
 
 impl WorldLoader for Loader {
-	fn load_chunk(&self, chunk: &Shared<world::Chunk>, pos: ChunkPos, anvil: std::sync::Arc<AnvilRegion>) {
+	fn load_chunk(
+		&self,
+		chunk: &Shared<world::Chunk>,
+		pos: ChunkPos,
+		anvil: std::sync::Arc<AnvilRegion>,
+	) {
 		let rawChunk: Chunk = anvil.load_chunk(pos).unwrap();
 		for rawSection in &rawChunk.sections {
 			if rawSection.blocks.is_none() {
 				continue;
 			}
-			
+
 			let blockInfo = rawSection.blocks.as_ref().unwrap();
-			let palette: world::Palette = blockInfo.palette.iter().map(|rawBS| {
-				let mut state = BlockStateBuilder::new(rawBS.name.as_str().into());
-				if let Some(props) = rawBS.properties.as_ref() {
-					for (k, v) in props {
-						state.set_property(k.as_str().into(), v.as_str().into());
+			let palette: world::Palette = blockInfo
+				.palette
+				.iter()
+				.map(|rawBS| {
+					let mut state = BlockStateBuilder::new(rawBS.name.as_str().into());
+					if let Some(props) = rawBS.properties.as_ref() {
+						for (k, v) in props {
+							state.set_property(k.as_str().into(), v.as_str().into());
+						}
 					}
-				}
-				state.build()
-			}).collect();
+					state.build()
+				})
+				.collect();
 			let paletteBits = palette.bits();
-			
+
 			let section = chunk.borrow_mut().new_section(rawSection.y, palette);
 			if let Some(blocks) = &blockInfo.blockArray {
-				section.borrow_mut().fill_blocks(biterator(paletteBits, bytemuck::cast_slice(blocks)));
+				section
+					.borrow_mut()
+					.fill_blocks(biterator(paletteBits, bytemuck::cast_slice(blocks)));
 			} else {
 				let it = std::iter::once(0).cycle().take(4096);
 				section.borrow_mut().fill_blocks(it);
