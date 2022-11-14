@@ -55,7 +55,7 @@ fn translation(blockId: u32) -> vec3<f32> {
 	let ty = f32(ty) + 16.0 * f32(section);
 	
 	// debugging
-	let tx = tx + 16.0 * f32(section);
+	// let tx = tx + 16.0 * f32(section);
 	
 	return vec3<f32>(tx, ty, tz);
 }

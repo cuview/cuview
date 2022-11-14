@@ -429,13 +429,13 @@ fn main() {
 		const submodelsPerBlock: usize = 10;
 		const submodelsPerSection: usize =
 			ChunkPos::diameterBlocks.pow(3) as usize * submodelsPerBlock;
-		let indirectBuffer = device.create_buffer(&wgpu::BufferDescriptor {
+		let indirectBuffers: Vec<_> = ChunkPos::sections.map(|_| device.create_buffer(&wgpu::BufferDescriptor {
 			label: None,
 			size: (submodelsPerSection * size_of::<wgpu::util::DrawIndirect>())
 				as wgpu::BufferAddress,
 			usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
-		});
+		})).collect();
 
 		let cameraBuffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: None,
@@ -649,11 +649,9 @@ fn main() {
 				}),
 			});
 			drop(clearPass);
-
+			
 			let mut indirectDraws = vec![];
-			for sectionY in [-4]
-			/* chunk.sections() */
-			{
+			for sectionY in chunk.sections() {
 				indirectDraws.clear();
 				let section = chunk.get_section(sectionY).unwrap();
 				let section = section.borrow();
@@ -681,8 +679,10 @@ fn main() {
 						}
 					}
 				}
-				queue.write_buffer(&indirectBuffer, 0, &indirectDraws);
-				// queue.submit(None);
+				
+				let indirectBuffer = &indirectBuffers[(sectionY - ChunkPos::sections.start()) as usize];
+				queue.write_buffer(indirectBuffer, 0, &indirectDraws);
+				queue.submit(None);
 				let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 					label: None,
 					color_attachments: &[Some(
@@ -714,10 +714,12 @@ fn main() {
 				);
 				// pass.set_push_constants(wgpu::ShaderStages::VERTEX, 4, );
 				pass.multi_draw_indirect(
-					&indirectBuffer,
+					indirectBuffer,
 					0,
 					(indirectDraws.len() / size_of::<DrawIndirect>()) as u32,
 				);
+				drop(pass);
+				queue.submit(None);
 			}
 			// drop(pass);
 
