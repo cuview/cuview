@@ -5,14 +5,15 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec2, Vec3};
+use glam::{vec3, BVec3, Mat4, Vec2, Vec3};
 use serde::Deserialize;
 
 use super::texture::{Cartographer, TextureId};
 use crate::jarfs::JarFS;
 use crate::loader::model::{
+	Axis,
 	BlockStateModel,
 	Element,
 	JsonBlockState,
@@ -20,6 +21,7 @@ use crate::loader::model::{
 	MultipartCase,
 	MultipartWhen,
 	OneOrMany,
+	Rotation,
 };
 use crate::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
 use crate::types::resource_location::ResourceKind;
@@ -290,7 +292,7 @@ impl Model {
 		})();
 		res.unwrap_or_else(|| "cuview:missing_texture".into())
 	}
-	
+
 	pub fn transform(&mut self, mat: Mat4) {
 		for face in &mut self.faces {
 			for vert in &mut face.verts {
@@ -298,7 +300,7 @@ impl Model {
 			}
 		}
 	}
-	
+
 	pub fn transformed(&self, mat: Mat4) -> Self {
 		let mut res = self.clone();
 		res.transform(mat);
@@ -311,7 +313,6 @@ pub struct ModelCache(BTreeMap<ResourceLocation, Model>);
 impl ModelCache {
 	const placeholderModelIds: &'static [&'static str] = &[
 		"cuview:missing_model",
-		
 		"block/entity",
 		"builtin/entity",
 		"builtin/generated",
@@ -432,10 +433,30 @@ impl ModelCache {
 				if let Some(elems) = &json.elements {
 					faces = Vec::with_capacity(elems.len() * 6);
 					for elem in elems {
-						let cube =
+						let mut cube =
 							Cube::new(Vec3::from(elem.from) / 16.0, Vec3::from(elem.to) / 16.0);
+
+						let rotation = elem.rotation.map(|rot| {
+							let origin = Vec3::from(rot.origin) / 16.0;
+							let angle = rot.angle.to_radians();
+							let rot = match rot.axis {
+								Axis::X => Mat4::from_rotation_x(angle),
+								Axis::Y => Mat4::from_rotation_y(angle),
+								Axis::Z => Mat4::from_rotation_z(angle),
+							};
+							// TODO: rescale
+							Mat4::from_translation(origin) * rot * Mat4::from_translation(-origin)
+						});
+
 						for (&dir, face) in &elem.faces {
 							let mut verts = cube.vertices(dir);
+
+							if let Some(rot) = rotation {
+								for vert in &mut verts {
+									vert.pos = rot.transform_point3(Vec3::from(vert.pos)).into();
+								}
+							}
+
 							if let Some(rect) = face.uv {
 								let mins = Vec2::new(rect[0], rect[1]) / 16.0;
 								let maxs = Vec2::new(rect[2], rect[3]) / 16.0;
@@ -443,6 +464,7 @@ impl ModelCache {
 									vert.uv = (mins + (maxs - mins) * Vec2::from(vert.uv)).into();
 								}
 							}
+
 							faces.push(Face {
 								texture: face.texture.as_str().into(),
 								verts,
@@ -463,7 +485,7 @@ impl ModelCache {
 					},
 				));
 			}
-			
+
 			for (loc, model) in newModels.drain(..) {
 				cache.insert(loc, model);
 				remaining.remove(&loc);
