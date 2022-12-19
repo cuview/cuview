@@ -48,13 +48,46 @@ pub enum Direction {
 
 #[derive(Clone, Copy)]
 pub struct Cube {
-	mins: Vec3,
-	maxs: Vec3,
+	pub mins: Vec3,
+	pub maxs: Vec3,
 }
 
 impl Cube {
-	pub fn new(mins: Vec3, maxs: Vec3) -> Self {
+	pub fn new(p1: Vec3, p2: Vec3) -> Self {
+		let mins = p1.min(p2);
+		let maxs = p1.max(p2);
 		Self { mins, maxs }
+	}
+
+	pub fn from_points(pts: impl IntoIterator<Item = Vec3>) -> Self {
+		let mut mins = Vec3::splat(f32::INFINITY);
+		let mut maxs = Vec3::splat(f32::NEG_INFINITY);
+		for pt in pts {
+			mins = mins.min(pt);
+			maxs = maxs.max(pt);
+		}
+		Self { mins, maxs }
+	}
+
+	pub fn size(&self) -> Vec3 {
+		self.maxs - self.mins
+	}
+
+	pub fn transform(&self, mat: Mat4) -> Self {
+		Self::from_points(self.corners().map(move |pt| mat.transform_point3(pt)))
+	}
+
+	pub fn corners(&self) -> [Vec3; 8] {
+		[
+			self.mins,
+			Vec3::select(BVec3::new(false, true, true), self.mins, self.maxs),
+			Vec3::select(BVec3::new(true, false, true), self.mins, self.maxs),
+			Vec3::select(BVec3::new(false, false, true), self.mins, self.maxs),
+			Vec3::select(BVec3::new(true, true, false), self.mins, self.maxs),
+			Vec3::select(BVec3::new(false, true, false), self.mins, self.maxs),
+			Vec3::select(BVec3::new(true, false, false), self.mins, self.maxs),
+			self.maxs,
+		]
 	}
 
 	pub fn vertices(&self, dir: Direction) -> [Vertex; 4] {
@@ -531,9 +564,14 @@ impl ModelCache {
 					Texture::Asset(_) => panic!(),
 					Texture::Slot(name) => name.as_str(),
 				};
-				let texId = cartographer.id_for_texture(model.texture(slot)).unwrap_or_else(|| {
-					cartographer.id_for_texture("cuview:missing_texture".into()).expect("Missing texture is itself missing! D:")
-				}).packed();
+				let texId = cartographer
+					.id_for_texture(model.texture(slot))
+					.unwrap_or_else(|| {
+						cartographer
+							.id_for_texture("cuview:missing_texture".into())
+							.expect("Missing texture is itself missing! D:")
+					})
+					.packed();
 				[
 					// expand triangle strip to pair of tris with slot
 					FullVertex {
@@ -712,13 +750,10 @@ pub fn models_for_states(
 	modelsForState
 }
 
-pub fn export_wavefront(
-	models: &[(&str, &Model)],
-	mtlFilename: &str,
-) -> (String, String) {
+pub fn export_wavefront(models: &[(&str, &Model)], mtlFilename: &str) -> (String, String) {
 	const palette: &[u32] = &[
-		0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x7FFF00,
-		0xFF7F00, 0x007FFF, 0x00FF7F, 0x7F00FF, 0xFF007F,
+		0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x7FFF00, 0xFF7F00,
+		0x007FFF, 0x00FF7F, 0x7F00FF, 0xFF007F,
 	];
 
 	let mut obj = String::new();

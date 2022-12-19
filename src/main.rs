@@ -18,7 +18,7 @@ use cuview::jarfs::JarFS;
 use cuview::loader::common::AnvilRegion;
 use cuview::loader::model::{Element, Face as JsonFace, JsonBlockState, JsonModel};
 use cuview::loader::{self, *};
-use cuview::renderer::model::{models_for_states, Model, ModelCache, Texture};
+use cuview::renderer::model::{models_for_states, Cube, Model, ModelCache, Texture};
 use cuview::renderer::texture::{Cartographer, Image, TextureId};
 use cuview::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
 use cuview::types::resource_location::ResourceKind;
@@ -134,30 +134,57 @@ struct Args {
 	#[arg(long, default_value_t = Vec3Arg(vec3(-5.0, 4.0, -5.0)))]
 	cameraOrigin: Vec3Arg,
 
-	#[arg(long, default_value_t = Vec3Arg(Vec3::splat(8.0)))]
-	cameraTarget: Vec3Arg,
+	#[arg(long, default_value_t = Vec2Arg(Vec2::splat(0.0)))]
+	cameraAngles: Vec2Arg,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Vec3Arg(Vec3);
-
-impl std::fmt::Display for Vec3Arg {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let Vec3 { x, y, z } = self.0;
-		f.write_fmt(format_args!("{x},{y},{z}"))
-	}
+macro_rules! replace {
+	($_:tt $e:expr) => {
+		$e
+	};
 }
 
-impl std::str::FromStr for Vec3Arg {
-	type Err = std::num::ParseFloatError;
+macro_rules! count {
+	($($xs:tt)*) => { 0usize $(+ replace!($xs 1usize))* };
+}
 
-	fn from_str(str: &str) -> Result<Self, Self::Err> {
-		let mut split = str.splitn(3, ",");
-		let x: f32 = split.next().unwrap_or("").parse()?;
-		let y: f32 = split.next().unwrap_or("").parse()?;
-		let z: f32 = split.next().unwrap_or("").parse()?;
-		Ok(Self(vec3(x, y, z)))
-	}
+macro_rules! VecArg {
+	($name:ident $type:ty [ $($field:ident)+ ]) => {
+		#[derive(Clone, Copy, Debug)]
+		struct $name($type);
+
+		impl std::fmt::Display for $name {
+			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+				use std::fmt::Write;
+
+				for (i, &v) in self.0.as_ref().into_iter().enumerate() {
+					if i > 0 {
+						f.write_char(',')?;
+					}
+					write!(f, "{v}")?;
+				}
+				Ok(())
+			}
+		}
+
+		impl std::str::FromStr for $name {
+			type Err = std::num::ParseFloatError;
+
+			fn from_str(str: &str) -> Result<Self, Self::Err> {
+				let mut res = <$type>::splat(0.0);
+				let mut split = str.splitn(count!($($field)*), ",");
+				$(res.$field = split.next().unwrap_or("").parse()?;)*
+				Ok(Self(res))
+			}
+		}
+	};
+}
+
+VecArg!(Vec2Arg Vec2 [x y]);
+VecArg!(Vec3Arg Vec3 [x y z]);
+
+enum CameraArgs {
+	Perspective {},
 }
 
 // #[cfg(none)]
@@ -207,6 +234,41 @@ fn main() {
 	let region = wrangler.load_region(&dim, targetChunk.into());
 	let chunk = wrangler.load_chunk(&region, targetChunk);
 	let chunk = chunk.borrow();
+	/*let world = cuview::world::World::new(&worldRoot);
+	let dim = world.borrow_mut().new_dimension("overworld".into(), &worldRoot);
+	let region = dim.borrow_mut().new_region(RegionPos::new(0, 0));
+	let chunk = region.borrow_mut().new_chunk(ChunkPos::new(0, 0));
+
+	// let blocks: [ResourceLocation; 16] = [
+	// 	"white_wool".into(),
+	// 	"orange_wool".into(),
+	// 	"magenta_wool".into(),
+	// 	"light_blue_wool".into(),
+	// 	"yellow_wool".into(),
+	// 	"lime_wool".into(),
+	// 	"pink_wool".into(),
+	// 	"gray_wool".into(),
+	// 	"light_gray_wool".into(),
+	// 	"cyan_wool".into(),
+	// 	"purple_wool".into(),
+	// 	"blue_wool".into(),
+	// 	"brown_wool".into(),
+	// 	"green_wool".into(),
+	// 	"red_wool".into(),
+	// 	"black_wool".into(),
+	// ];
+	// let mut blocks = blocks.into_iter().cycle();
+	let mut states = blockstates.blocks().map(|v| blockstates.default_state_of(v).unwrap());
+	for y in ChunkPos::sections {
+		// let state = BlockState::stateless(blocks.next().unwrap());
+		let state = states.next().unwrap();
+		let palette: Palette = [state].into_iter().collect();
+		let section = chunk.borrow_mut().new_section(y, palette);
+		section.borrow_mut().fill_with_block(state);
+	}
+
+	let targetChunk = ChunkPos::new(0, 0);
+	let chunk = chunk.borrow();*/
 
 	/* let section = chunk.get_section(-4).unwrap();
 	let section = section.borrow();
@@ -287,6 +349,7 @@ fn main() {
 						wgpu::Features::INDIRECT_FIRST_INSTANCE,
 					limits: wgpu::Limits {
 						max_push_constant_size: 128,
+						max_texture_dimension_2d: 32768,
 						..wgpu::Limits::default()
 					},
 				},
@@ -295,9 +358,68 @@ fn main() {
 			.await
 			.unwrap();
 
+		let (cameraBuffer, imgWidth, imgHeight) = {
+			let (imgWidth, imgHeight) = (1280, 720);
+			let cameraBuffer = device.create_buffer(&wgpu::BufferDescriptor {
+				label: None,
+				size: size_of::<[f32; 32]>() as wgpu::BufferAddress,
+				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+				mapped_at_creation: false,
+			});
+			// #[cfg(none)]
+			let projection = Mat4::perspective_rh(
+				90f32.to_radians(),
+				imgWidth as f32 / imgHeight as f32,
+				0.01,
+				1000.0,
+			);
+			// let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
+			// 	Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
+			// let forward = rot.transform_vector3(Vec3::Z);
+			// dbg!(forward);
+			// let camera =
+			// 	Mat4::look_at_rh(args.cameraOrigin.0, args.cameraOrigin.0 + forward,
+			// Vec3::Y);
+
+			let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
+				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
+			let forward = rot.transform_vector3(Vec3::Z);
+			let pos = vec3(0.0, 321.0, 0.0);
+			let camera = Mat4::look_at_rh(
+				/* args.cameraOrigin.0 */ pos,
+				/* args.cameraOrigin.0 */ pos + forward,
+				Vec3::Y,
+			);
+			let cube = Cube::new(vec3(0.0, -64.0, 0.0), vec3(16.0, 320.0, 16.0)).transform(camera);
+			let projection = Mat4::orthographic_rh(
+				cube.mins.x,
+				cube.maxs.x,
+				cube.mins.y,
+				cube.maxs.y,
+				0.0,
+				1000.0,
+			);
+
+			queue.write_buffer(&cameraBuffer, 0, bytemuck::cast_slice(projection.as_ref()));
+			queue.write_buffer(
+				&cameraBuffer,
+				size_of::<[f32; 16]>() as wgpu::BufferAddress,
+				bytemuck::cast_slice(camera.as_ref()),
+			);
+
+			let cubeSize = cube.size();
+			let scale = 32.0;
+			(
+				cameraBuffer,
+				(cubeSize.x * scale) as u32,
+				(cubeSize.y * scale) as u32,
+			)
+			// (cameraBuffer, imgWidth, imgHeight)
+		};
+
 		let frameSize = wgpu::Extent3d {
-			width: 1280,
-			height: 720,
+			width: imgWidth,
+			height: imgHeight,
 			depth_or_array_layers: 1,
 		};
 		let frameFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -429,33 +551,17 @@ fn main() {
 		const submodelsPerBlock: usize = 10;
 		const submodelsPerSection: usize =
 			ChunkPos::diameterBlocks.pow(3) as usize * submodelsPerBlock;
-		let indirectBuffers: Vec<_> = ChunkPos::sections.map(|_| device.create_buffer(&wgpu::BufferDescriptor {
-			label: None,
-			size: (submodelsPerSection * size_of::<wgpu::util::DrawIndirect>())
-				as wgpu::BufferAddress,
-			usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
-			mapped_at_creation: false,
-		})).collect();
-
-		let cameraBuffer = device.create_buffer(&wgpu::BufferDescriptor {
-			label: None,
-			size: size_of::<[f32; 32]>() as wgpu::BufferAddress,
-			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-			mapped_at_creation: false,
-		});
-		let projection = Mat4::perspective_rh(
-			90f32.to_radians(),
-			frameSize.width as f32 / frameSize.height as f32,
-			0.01,
-			1000.0,
-		);
-		let camera = Mat4::look_at_rh(args.cameraOrigin.0, args.cameraTarget.0, Vec3::Y);
-		queue.write_buffer(&cameraBuffer, 0, bytemuck::cast_slice(projection.as_ref()));
-		queue.write_buffer(
-			&cameraBuffer,
-			size_of::<[f32; 16]>() as wgpu::BufferAddress,
-			bytemuck::cast_slice(camera.as_ref()),
-		);
+		let indirectBuffers: Vec<_> = ChunkPos::sections
+			.map(|_| {
+				device.create_buffer(&wgpu::BufferDescriptor {
+					label: None,
+					size: (submodelsPerSection * size_of::<wgpu::util::DrawIndirect>())
+						as wgpu::BufferAddress,
+					usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+					mapped_at_creation: false,
+				})
+			})
+			.collect();
 
 		/* let debugTris: &[f32] = &[
 			0.0, 1.0, -1.0,   0.5, 1.0,
@@ -649,7 +755,7 @@ fn main() {
 				}),
 			});
 			drop(clearPass);
-			
+
 			let mut indirectDraws = vec![];
 			for sectionY in chunk.sections() {
 				indirectDraws.clear();
@@ -679,10 +785,11 @@ fn main() {
 						}
 					}
 				}
-				
-				let indirectBuffer = &indirectBuffers[(sectionY - ChunkPos::sections.start()) as usize];
+
+				let indirectBuffer =
+					&indirectBuffers[(sectionY - ChunkPos::sections.start()) as usize];
 				queue.write_buffer(indirectBuffer, 0, &indirectDraws);
-				queue.submit(None);
+				// queue.submit(None);
 				let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 					label: None,
 					color_attachments: &[Some(
@@ -718,8 +825,8 @@ fn main() {
 					0,
 					(indirectDraws.len() / size_of::<DrawIndirect>()) as u32,
 				);
-				drop(pass);
-				queue.submit(None);
+				// drop(pass);
+				// queue.submit(None);
 			}
 			// drop(pass);
 

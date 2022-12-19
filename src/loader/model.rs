@@ -180,7 +180,7 @@ impl Element {
 	}
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub struct Rotation {
 	pub origin: [f32; 3],
 

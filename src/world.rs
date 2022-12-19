@@ -343,7 +343,12 @@ impl ChunkSection {
 		self.blocks[index] = self.palette.borrow().get_id(state).unwrap();
 	}
 
-	pub fn fill_blocks(&mut self, palettedBlocks: impl Iterator<Item = u32>) {
+	pub fn fill_with_block(&mut self, state: BlockState) {
+		let id = self.palette.borrow().get_id(state).unwrap();
+		self.blocks.fill(id);
+	}
+
+	pub fn fill_from_iter(&mut self, palettedBlocks: impl Iterator<Item = u32>) {
 		let mut len = 0;
 		for (pos, id) in self.pos.blocks_in_section(self.y).zip(palettedBlocks) {
 			len += 1;

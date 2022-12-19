@@ -121,7 +121,7 @@ impl Cartographer {
 			};
 			let id = atlas.entries.len();
 			atlas.entries.push(loc);
-			
+
 			let tid = TextureId {
 				atlas: atlas.id,
 				texture: id as u32,
@@ -129,18 +129,19 @@ impl Cartographer {
 			textures.insert(loc, tid);
 			images.insert(loc, img);
 		};
-	
+
 		let missingTex = "cuview:missing_texture".into();
 		let missingTexImage = missing_texture(0xFF_FF00FF);
 		add_texture(missingTex, missingTexImage.clone());
-		
+
 		for loc in models
 			.all_block_textures()
 			.into_iter()
 			.collect::<BTreeSet<_>>()
 		{
 			let path = loc.into_path(ResourceKind::Texture);
-			let mut image = Image::from_jarfs(fs, &path).unwrap_or_else(|_| missingTexImage.clone());
+			let mut image =
+				Image::from_jarfs(fs, &path).unwrap_or_else(|_| missingTexImage.clone());
 
 			let UVec2 {
 				x: width,
@@ -253,7 +254,7 @@ impl Image {
 			pixels: vec![0xFF_000000; (size.x * size.y) as usize],
 		}
 	}
-	
+
 	pub fn solid_color(size: UVec2, color: u32) -> Self {
 		Self {
 			size,
@@ -384,9 +385,9 @@ impl Image {
 }
 
 impl std::fmt::Debug for Image {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Image").field("size", &self.size).finish()
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Image").field("size", &self.size).finish()
+	}
 }
 
 #[test]

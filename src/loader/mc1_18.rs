@@ -44,10 +44,10 @@ impl WorldLoader for Loader {
 			if let Some(blocks) = &blockInfo.blockArray {
 				section
 					.borrow_mut()
-					.fill_blocks(biterator(paletteBits, bytemuck::cast_slice(blocks)));
+					.fill_from_iter(biterator(paletteBits, bytemuck::cast_slice(blocks)));
 			} else {
 				let it = std::iter::once(0).cycle().take(4096);
-				section.borrow_mut().fill_blocks(it);
+				section.borrow_mut().fill_from_iter(it);
 			}
 		}
 	}
