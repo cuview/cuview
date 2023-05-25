@@ -4,6 +4,7 @@ use std::borrow::{Borrow, Cow};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
+use std::f32::consts::TAU;
 use std::ffi::OsStr;
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
@@ -368,20 +369,19 @@ fn main() {
 			});
 			// #[cfg(none)]
 			let projection = Mat4::perspective_rh(
-				90f32.to_radians(),
+				110f32.to_radians(),
 				imgWidth as f32 / imgHeight as f32,
 				0.01,
 				1000.0,
 			);
-			// let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
-			// 	Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
-			// let forward = rot.transform_vector3(Vec3::Z);
-			// dbg!(forward);
-			// let camera =
-			// 	Mat4::look_at_rh(args.cameraOrigin.0, args.cameraOrigin.0 + forward,
-			// Vec3::Y);
-
 			let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
+				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
+			let forward = rot.transform_vector3(Vec3::Z);
+			dbg!(forward);
+			let camera =
+				Mat4::look_at_rh(args.cameraOrigin.0, args.cameraOrigin.0 + forward, Vec3::Y);
+
+			/* let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
 				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
 			let forward = rot.transform_vector3(Vec3::Z);
 			let pos = vec3(0.0, 321.0, 0.0);
@@ -398,7 +398,7 @@ fn main() {
 				cube.maxs.y,
 				0.0,
 				1000.0,
-			);
+			); */
 
 			queue.write_buffer(&cameraBuffer, 0, bytemuck::cast_slice(projection.as_ref()));
 			queue.write_buffer(
@@ -407,14 +407,14 @@ fn main() {
 				bytemuck::cast_slice(camera.as_ref()),
 			);
 
-			let cubeSize = cube.size();
-			let scale = 32.0;
-			(
-				cameraBuffer,
-				(cubeSize.x * scale) as u32,
-				(cubeSize.y * scale) as u32,
-			)
-			// (cameraBuffer, imgWidth, imgHeight)
+			// let cubeSize = cube.size();
+			// let scale = 32.0;
+			// (
+			// 	cameraBuffer,
+			// 	(cubeSize.x * scale) as u32,
+			// 	(cubeSize.y * scale) as u32,
+			// )
+			(cameraBuffer, imgWidth, imgHeight)
 		};
 
 		let frameSize = wgpu::Extent3d {
@@ -772,7 +772,23 @@ fn main() {
 							geometry.modelInfo.get(&modelId).copied()
 						{
 							let blockRel = blockPos.chunk_relative();
-							let instance = (blockRel.y * 256 + blockRel.z * 16 + blockRel.x) as u32;
+							let blockIndex = blockRel.y * ChunkPos::diameterBlocks.pow(2) +
+								blockRel.z * ChunkPos::diameterBlocks +
+								blockRel.x;
+
+							// pack rotations into the unused upper 20 bits of instance id
+							// let rot = vec2(45f32.to_radians(), 0.0/* (14.5 * blockIndex as
+							// f32).to_radians() */);
+							let rot = vec2(
+								model.xRotation.unwrap_or(0.0).to_radians(),
+								model.yRotation.unwrap_or(0.0).to_radians(),
+							);
+							let rotTurns =
+								Vec2::from((rot / TAU).as_ref().map(|v| v.rem_euclid(1.0)));
+							let rotDiscrete = (rotTurns * 1024.0).as_uvec2();
+							let rotPacked = (rotDiscrete.y & 1023) << 10 | rotDiscrete.x & 1023;
+
+							let instance = rotPacked << 12 | blockIndex as u32;
 							indirectDraws.extend(
 								DrawIndirect {
 									base_vertex: baseVertex as u32,
