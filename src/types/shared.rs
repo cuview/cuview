@@ -21,13 +21,13 @@ impl<T> Shared<T> {
 		&self.0
 	}
 
-	pub fn borrow(&self) -> RwLockReadGuard<T> {
+	pub fn borrow(&self) -> RwLockReadGuard<'_, T> {
 		self.0
 			.read()
 			.expect("Failed to lock Shared for immutable borrow")
 	}
 
-	pub fn borrow_mut(&self) -> RwLockWriteGuard<T> {
+	pub fn borrow_mut(&self) -> RwLockWriteGuard<'_, T> {
 		self.0
 			.write()
 			.expect("Failed to lock Shared for mutable borrow")
