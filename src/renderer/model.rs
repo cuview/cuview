@@ -1,32 +1,39 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fmt::Write;
-use std::hash::Hash;
-use std::ops::{Deref, DerefMut};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+	fmt::Write,
+	hash::Hash,
+	ops::{Deref, DerefMut},
+	path::{Path, PathBuf},
+	sync::Arc,
+};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use bytemuck::{Pod, Zeroable};
-use glam::{vec3, BVec3, Mat4, Vec2, Vec3};
+use glam::{BVec3, Mat4, Vec2, Vec3, vec3};
 use serde::Deserialize;
 
 use super::texture::{Cartographer, TextureId};
-use crate::jarfs::JarFS;
-use crate::loader::model::{
-	Axis,
-	BlockStateModel,
-	Element,
-	JsonBlockState,
-	JsonModel,
-	MultipartCase,
-	MultipartWhen,
-	OneOrMany,
-	Rotation,
+use crate::{
+	jarfs::JarFS,
+	loader::model::{
+		Axis,
+		BlockStateModel,
+		Element,
+		JsonBlockState,
+		JsonModel,
+		MultipartCase,
+		MultipartWhen,
+		OneOrMany,
+		Rotation,
+	},
+	types::{
+		IString,
+		ResourceLocation,
+		blockstate::{BlockState, BlockStateBuilder, BlockStateCache},
+		resource_location::ResourceKind,
+		shared::Shared,
+	},
 };
-use crate::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
-use crate::types::resource_location::ResourceKind;
-use crate::types::shared::Shared;
-use crate::types::{IString, ResourceLocation};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,157 +102,109 @@ impl Cube {
 		match dir {
 			Direction::Up => [
 				Vertex {
-					pos: [
-						maxs.x, maxs.y, mins.z,
-					],
+					pos: [maxs.x, maxs.y, mins.z],
 					uv: [1.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, maxs.y, mins.z,
-					],
+					pos: [mins.x, maxs.y, mins.z],
 					uv: [0.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, maxs.y, maxs.z,
-					],
+					pos: [maxs.x, maxs.y, maxs.z],
 					uv: [1.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, maxs.y, maxs.z,
-					],
+					pos: [mins.x, maxs.y, maxs.z],
 					uv: [0.0, 0.0],
 				},
 			],
 			Direction::Down => [
 				Vertex {
-					pos: [
-						mins.x, mins.y, mins.z,
-					],
+					pos: [mins.x, mins.y, mins.z],
 					uv: [0.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, mins.y, mins.z,
-					],
+					pos: [maxs.x, mins.y, mins.z],
 					uv: [1.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, mins.y, maxs.z,
-					],
+					pos: [mins.x, mins.y, maxs.z],
 					uv: [0.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, mins.y, maxs.z,
-					],
+					pos: [maxs.x, mins.y, maxs.z],
 					uv: [1.0, 1.0],
 				},
 			],
 			Direction::North => [
 				Vertex {
-					pos: [
-						mins.x, maxs.y, mins.z,
-					],
+					pos: [mins.x, maxs.y, mins.z],
 					uv: [1.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, maxs.y, mins.z,
-					],
+					pos: [maxs.x, maxs.y, mins.z],
 					uv: [0.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, mins.y, mins.z,
-					],
+					pos: [mins.x, mins.y, mins.z],
 					uv: [1.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, mins.y, mins.z,
-					],
+					pos: [maxs.x, mins.y, mins.z],
 					uv: [0.0, 0.0],
 				},
 			],
 			Direction::East => [
 				Vertex {
-					pos: [
-						maxs.x, maxs.y, mins.z,
-					],
+					pos: [maxs.x, maxs.y, mins.z],
 					uv: [1.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, maxs.y, maxs.z,
-					],
+					pos: [maxs.x, maxs.y, maxs.z],
 					uv: [0.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, mins.y, mins.z,
-					],
+					pos: [maxs.x, mins.y, mins.z],
 					uv: [1.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, mins.y, maxs.z,
-					],
+					pos: [maxs.x, mins.y, maxs.z],
 					uv: [0.0, 0.0],
 				},
 			],
 			Direction::South => [
 				Vertex {
-					pos: [
-						maxs.x, maxs.y, maxs.z,
-					],
+					pos: [maxs.x, maxs.y, maxs.z],
 					uv: [1.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, maxs.y, maxs.z,
-					],
+					pos: [mins.x, maxs.y, maxs.z],
 					uv: [0.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						maxs.x, mins.y, maxs.z,
-					],
+					pos: [maxs.x, mins.y, maxs.z],
 					uv: [1.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, mins.y, maxs.z,
-					],
+					pos: [mins.x, mins.y, maxs.z],
 					uv: [0.0, 0.0],
 				},
 			],
 			Direction::West => [
 				Vertex {
-					pos: [
-						mins.x, maxs.y, maxs.z,
-					],
+					pos: [mins.x, maxs.y, maxs.z],
 					uv: [1.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, maxs.y, mins.z,
-					],
+					pos: [mins.x, maxs.y, mins.z],
 					uv: [0.0, 1.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, mins.y, maxs.z,
-					],
+					pos: [mins.x, mins.y, maxs.z],
 					uv: [1.0, 0.0],
 				},
 				Vertex {
-					pos: [
-						mins.x, mins.y, mins.z,
-					],
+					pos: [mins.x, mins.y, mins.z],
 					uv: [0.0, 0.0],
 				},
 			],
@@ -415,15 +374,12 @@ impl ModelCache {
 		let mut cache = Self(BTreeMap::new());
 
 		for id in placeholders {
-			cache.insert(
+			cache.insert(id, Model {
 				id,
-				Model {
-					id,
-					parent: None,
-					texture_slots: BTreeMap::new(),
-					faces: vec![],
-				},
-			);
+				parent: None,
+				texture_slots: BTreeMap::new(),
+				faces: vec![],
+			});
 		}
 
 		let mut remaining: HashSet<_> = jsons.keys().cloned().collect();
@@ -508,15 +464,12 @@ impl ModelCache {
 					faces = parent.map(|v| v.faces.clone()).unwrap_or_else(|| vec![]);
 				}
 
-				new_models.push((
-					loc,
-					Model {
-						id: loc,
-						parent: json.parent,
-						texture_slots,
-						faces,
-					},
-				));
+				new_models.push((loc, Model {
+					id: loc,
+					parent: json.parent,
+					texture_slots,
+					faces,
+				}));
 			}
 
 			for (loc, model) in new_models.drain(..) {

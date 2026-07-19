@@ -1,0 +1,19 @@
+edition = "2024"
+
+binop_separator = "back"
+condense_wildcard_suffixes = true
+format_strings = true
+group_imports = "StdExternalCrate"
+hard_tabs = true
+hex_literal_case = "Upper"
+imports_granularity = "Crate"
+imports_layout = "HorizontalVertical"
+match_block_trailing_comma = true
+newline_style = "Unix"
+overflow_delimited_expr = true
+reorder_impl_items = true
+spaces_around_ranges = true
+unstable_features = true
+use_field_init_shorthand = true
+where_single_line = false
+wrap_comments = true

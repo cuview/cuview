@@ -1,12 +1,16 @@
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::fmt::{self, Debug, Display};
-use std::ptr::eq as ptr_eq;
-use std::str::FromStr;
-use std::sync::{LazyLock, RwLock};
+use std::{
+	cell::RefCell,
+	collections::HashSet,
+	fmt::{self, Debug, Display},
+	ptr::eq as ptr_eq,
+	str::FromStr,
+	sync::{LazyLock, RwLock},
+};
 
-use serde::de::{DeserializeOwned, Visitor};
-use serde::Deserialize;
+use serde::{
+	Deserialize,
+	de::{DeserializeOwned, Visitor},
+};
 
 use crate::JsonValue;
 
@@ -89,7 +93,7 @@ impl PartialEq for IString {
 }
 
 impl std::hash::Hash for IString {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		std::ptr::hash(self.0, state)
 	}
 }

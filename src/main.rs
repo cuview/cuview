@@ -1,36 +1,52 @@
 #![allow(unused)]
 
-use std::borrow::{Borrow, Cow};
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::convert::TryInto;
-use std::f32::consts::TAU;
-use std::ffi::OsStr;
-use std::hash::{Hash, Hasher};
-use std::io::{Read, Write};
-use std::mem::size_of;
-use std::path::{Component, Path, PathBuf};
-use std::process::exit;
+use std::{
+	borrow::{Borrow, Cow},
+	collections::{BTreeSet, HashMap, HashSet, hash_map::DefaultHasher},
+	convert::TryInto,
+	f32::consts::TAU,
+	ffi::OsStr,
+	hash::{Hash, Hasher},
+	io::{Read, Write},
+	mem::size_of,
+	path::{Component, Path, PathBuf},
+	process::exit,
+};
 
 use anyhow::Context;
 use blockstate::BlockStates;
 use clap::Parser;
-use cuview::default;
-use cuview::jarfs::JarFS;
-use cuview::loader::common::AnvilRegion;
-use cuview::loader::model::{Element, Face as JsonFace, JsonBlockState, JsonModel};
-use cuview::loader::{self, *};
-use cuview::renderer::model::{models_for_states, Cube, Model, ModelCache, Texture};
-use cuview::renderer::texture::{Cartographer, Image, TextureId};
-use cuview::types::blockstate::{BlockState, BlockStateBuilder, BlockStateCache};
-use cuview::types::resource_location::ResourceKind;
-use cuview::types::{BlockPos, ChunkPos, IString, RegionPos, ResourceLocation};
-use cuview::world::Palette;
-use glam::{uvec2, vec2, vec3, Mat4, UVec2, Vec2, Vec3};
+use cuview::{
+	default,
+	jarfs::JarFS,
+	loader::{
+		self,
+		common::AnvilRegion,
+		model::{Element, Face as JsonFace, JsonBlockState, JsonModel},
+		*,
+	},
+	renderer::{
+		model::{Cube, Model, ModelCache, Texture, models_for_states},
+		texture::{Cartographer, Image, TextureId},
+	},
+	types::{
+		BlockPos,
+		ChunkPos,
+		IString,
+		RegionPos,
+		ResourceLocation,
+		blockstate::{BlockState, BlockStateBuilder, BlockStateCache},
+		resource_location::ResourceKind,
+	},
+	world::Palette,
+};
+use glam::{Mat4, UVec2, Vec2, Vec3, uvec2, vec2, vec3};
 use loader::model::{BlockStateModel, MultipartCase, OneOrMany};
 use model::MultipartWhen;
-use wgpu::util::{DeviceExt, DrawIndirectArgs};
-use wgpu::Extent3d;
+use wgpu::{
+	Extent3d,
+	util::{DeviceExt, DrawIndirectArgs},
+};
 
 #[cfg(false)]
 fn main() {
@@ -53,17 +69,16 @@ fn main() {
 	/* let k = blockstates.0.keys().copied().next().unwrap();
 	blockstates.0.get_mut(&k).unwrap().states.truncate(1); */
 	#[cfg(false)]
-	blockstates.0.insert(
-		"cuview:test".into(),
-		blockstate::BlockDefinition {
+	blockstates
+		.0
+		.insert("cuview:test".into(), blockstate::BlockDefinition {
 			properties: None,
 			states: vec![blockstate::State {
 				properties: None,
 				id: u32::MAX,
 				default: true,
 			}],
-		},
-	);
+		});
 	let blockstates = BlockStateCache::from_json(blockstates);
 
 	let modelsForState = models_for_states(&fs, &blockstates);
@@ -350,21 +365,19 @@ fn main() {
 			.await
 			.unwrap();
 		let (device, queue) = adapter
-			.request_device(
-				&wgpu::DeviceDescriptor {
-					label: None,
-					required_features: wgpu::Features::IMMEDIATES |
-						wgpu::Features::INDIRECT_FIRST_INSTANCE,
-					required_limits: wgpu::Limits {
-						max_immediate_size: 128,
-						max_texture_dimension_2d: 32768,
-						..wgpu::Limits::default()
-					},
-					experimental_features: wgpu::ExperimentalFeatures::disabled(),
-					memory_hints: wgpu::MemoryHints::Performance,
-					trace: wgpu::Trace::Off,
+			.request_device(&wgpu::DeviceDescriptor {
+				label: None,
+				required_features: wgpu::Features::IMMEDIATES |
+					wgpu::Features::INDIRECT_FIRST_INSTANCE,
+				required_limits: wgpu::Limits {
+					max_immediate_size: 128,
+					max_texture_dimension_2d: 32768,
+					..wgpu::Limits::default()
 				},
-			)
+				experimental_features: wgpu::ExperimentalFeatures::disabled(),
+				memory_hints: wgpu::MemoryHints::Performance,
+				trace: wgpu::Trace::Off,
+			})
 			.await
 			.unwrap();
 
@@ -387,8 +400,11 @@ fn main() {
 				Mat4::from_rotation_x(args.camera_angles.0.x.to_radians());
 			let forward = rot.transform_vector3(Vec3::Z);
 			dbg!(forward);
-			let camera =
-				glam::camera::rh::view::look_at_mat4(args.camera_origin.0, args.camera_origin.0 + forward, Vec3::Y);
+			let camera = glam::camera::rh::view::look_at_mat4(
+				args.camera_origin.0,
+				args.camera_origin.0 + forward,
+				Vec3::Y,
+			);
 
 			/* let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
 				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
@@ -483,7 +499,8 @@ fn main() {
 			view_formats: vec![],
 		};
 
-		let (cartographer, block_texture_layers) = Cartographer::load(&fs, &models, &device).unwrap();
+		let (cartographer, block_texture_layers) =
+			Cartographer::load(&fs, &models, &device).unwrap();
 		#[cfg(false)]
 		{
 			let base = PathBuf::from("./aout/");
@@ -684,36 +701,32 @@ fn main() {
 				module: &shader,
 				entry_point: Some("vsMain"),
 				compilation_options: default(),
-				buffers: &[
-					Some(wgpu::VertexBufferLayout {
-						array_stride: size_of::<[f32; 6]>() as wgpu::BufferAddress,
-						step_mode: wgpu::VertexStepMode::Vertex,
-						attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Uint32],
-					}),
-				],
+				buffers: &[Some(wgpu::VertexBufferLayout {
+					array_stride: size_of::<[f32; 6]>() as wgpu::BufferAddress,
+					step_mode: wgpu::VertexStepMode::Vertex,
+					attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Uint32],
+				})],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
 				entry_point: Some("fsMain"),
 				compilation_options: default(),
-				targets: &[Some(
-					wgpu::ColorTargetState {
-						format: frame_format,
-						blend: Some(wgpu::BlendState {
-							color: wgpu::BlendComponent {
-								src_factor: wgpu::BlendFactor::SrcAlpha,
-								dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-								operation: wgpu::BlendOperation::Add,
-							},
-							alpha: wgpu::BlendComponent {
-								src_factor: wgpu::BlendFactor::One,
-								dst_factor: wgpu::BlendFactor::One,
-								operation: wgpu::BlendOperation::Max,
-							},
-						}),
-						write_mask: wgpu::ColorWrites::ALL,
-					},
-				)],
+				targets: &[Some(wgpu::ColorTargetState {
+					format: frame_format,
+					blend: Some(wgpu::BlendState {
+						color: wgpu::BlendComponent {
+							src_factor: wgpu::BlendFactor::SrcAlpha,
+							dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+							operation: wgpu::BlendOperation::Add,
+						},
+						alpha: wgpu::BlendComponent {
+							src_factor: wgpu::BlendFactor::One,
+							dst_factor: wgpu::BlendFactor::One,
+							operation: wgpu::BlendOperation::Max,
+						},
+					}),
+					write_mask: wgpu::ColorWrites::ALL,
+				})],
 			}),
 			primitive: wgpu::PrimitiveState {
 				cull_mode: None, // Some(wgpu::Face::Back),
@@ -745,22 +758,20 @@ fn main() {
 
 			let mut clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				label: None,
-				color_attachments: &[Some(
-					wgpu::RenderPassColorAttachment {
-						view: &multisample_view,
-						depth_slice: None,
-						resolve_target: Some(&color_view),
-						ops: wgpu::Operations {
-							load: wgpu::LoadOp::Clear(wgpu::Color {
-								r: 1.0,
-								g: 0.5,
-								b: 0.0,
-								a: 1.0,
-							}),
-							store: wgpu::StoreOp::Store,
-						},
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &multisample_view,
+					depth_slice: None,
+					resolve_target: Some(&color_view),
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color {
+							r: 1.0,
+							g: 0.5,
+							b: 0.0,
+							a: 1.0,
+						}),
+						store: wgpu::StoreOp::Store,
 					},
-				)],
+				})],
 				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
 					view: &depth_view,
 					depth_ops: Some(wgpu::Operations {
@@ -827,17 +838,15 @@ fn main() {
 				// queue.submit(None);
 				let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 					label: None,
-					color_attachments: &[Some(
-						wgpu::RenderPassColorAttachment {
-							view: &multisample_view,
-							depth_slice: None,
-							resolve_target: Some(&color_view),
-							ops: wgpu::Operations {
-								load: wgpu::LoadOp::Load,
-								store: wgpu::StoreOp::Store,
-							},
+					color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+						view: &multisample_view,
+						depth_slice: None,
+						resolve_target: Some(&color_view),
+						ops: wgpu::Operations {
+							load: wgpu::LoadOp::Load,
+							store: wgpu::StoreOp::Store,
 						},
-					)],
+					})],
 					depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
 						view: &depth_view,
 						depth_ops: Some(wgpu::Operations {
@@ -853,10 +862,7 @@ fn main() {
 				pass.set_pipeline(&pipeline);
 				pass.set_bind_group(0, &bind_group, &[]);
 				pass.set_vertex_buffer(0, block_models_buffer.slice(..));
-				pass.set_immediates(
-					0,
-					bytemuck::bytes_of(&(section_y as i32)),
-				);
+				pass.set_immediates(0, bytemuck::bytes_of(&(section_y as i32)));
 				// pass.set_push_constants(wgpu::ShaderStages::VERTEX, 4, );
 				pass.multi_draw_indirect(
 					indirect_buffer,
@@ -875,7 +881,9 @@ fn main() {
 					layout: wgpu::TexelCopyBufferLayout {
 						offset: 0,
 						bytes_per_row: Some(
-							(frame_copy_buffer_size.bpl_padded as u32).try_into().unwrap(),
+							(frame_copy_buffer_size.bpl_padded as u32)
+								.try_into()
+								.unwrap(),
 						),
 						rows_per_image: None,
 					},
@@ -891,13 +899,18 @@ fn main() {
 			submission_index: Some(submission),
 			timeout: Some(std::time::Duration::from_secs_f32(1.5)),
 		}) {
-			Ok(wgpu::PollStatus::Poll) => unreachable!("Device::poll with PollType::Wait should never return PollStatus::Poll"),
+			Ok(wgpu::PollStatus::Poll) => unreachable!(
+				"Device::poll with PollType::Wait should never return PollStatus::Poll"
+			),
 			Ok(wgpu::PollStatus::QueueEmpty | wgpu::PollStatus::WaitSucceeded) => {},
 			Err(err) => panic!("Device::poll failed: {err}"),
 		}
 
-		let padded = slice.get_mapped_range().expect("couldn't map frame copy buffer");
-		let mut pixels = vec![0u8; frame_copy_buffer_size.bpl_unpadded * frame_copy_buffer_size.height];
+		let padded = slice
+			.get_mapped_range()
+			.expect("couldn't map frame copy buffer");
+		let mut pixels =
+			vec![0u8; frame_copy_buffer_size.bpl_unpadded * frame_copy_buffer_size.height];
 		let mut pixslice = &mut pixels[..];
 		for chunk in padded.chunks(frame_copy_buffer_size.bpl_padded) {
 			let len = frame_copy_buffer_size.bpl_unpadded;

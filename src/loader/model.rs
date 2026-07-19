@@ -1,17 +1,18 @@
-use std::collections::{HashMap, HashSet};
-use std::iter::FusedIterator;
-use std::path::{Path, PathBuf};
+use std::{
+	collections::{HashMap, HashSet},
+	iter::FusedIterator,
+	path::{Path, PathBuf},
+};
 
 use glam::Vec3;
-use serde::de::Visitor;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::Visitor};
 use serde_json::Value as JsonValue;
 
-use crate::jarfs::JarFS;
-use crate::renderer::model::Direction;
-use crate::types::blockstate::BlockState;
-use crate::types::resource_location::ResourceKind;
-use crate::types::{IString, ResourceLocation};
+use crate::{
+	jarfs::JarFS,
+	renderer::model::Direction,
+	types::{IString, ResourceLocation, blockstate::BlockState, resource_location::ResourceKind},
+};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]

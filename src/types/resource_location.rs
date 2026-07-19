@@ -1,6 +1,8 @@
-use std::cell::RefCell;
-use std::fmt::{Debug, Display};
-use std::path::{Path, PathBuf};
+use std::{
+	cell::RefCell,
+	fmt::{Debug, Display},
+	path::{Path, PathBuf},
+};
 
 use serde::Deserialize;
 use serde_json::value::Value as JsonValue;

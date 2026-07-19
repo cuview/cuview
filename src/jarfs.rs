@@ -1,15 +1,15 @@
-use std::cell::RefCell;
-use std::collections::{BTreeSet, HashSet};
-use std::error::Error;
-use std::fs::{self, File};
-use std::io::{self, Cursor, Read, Seek};
-use std::ops::{Deref, DerefMut};
-use std::path::{Path, PathBuf};
+use std::{
+	cell::RefCell,
+	collections::{BTreeSet, HashSet},
+	error::Error,
+	fs::{self, File},
+	io::{self, Cursor, Read, Seek},
+	ops::{Deref, DerefMut},
+	path::{Path, PathBuf},
+};
 
 use anyhow::anyhow;
-use zip::read::ZipFile;
-use zip::result::ZipResult;
-use zip::{ZipArchive, ZipWriter};
+use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult};
 
 use crate::types::resource_location::ResourceKind;
 

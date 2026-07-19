@@ -1,12 +1,15 @@
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fmt::{self, Debug, Display, Write};
-use std::hash::Hash;
-use std::ops::{Deref, DerefMut};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap, hash_map::DefaultHasher},
+	fmt::{self, Debug, Display, Write},
+	hash::Hash,
+	ops::{Deref, DerefMut},
+};
 
 use super::{IString, ResourceLocation};
-use crate::loader::blockstate::{BlockStates, State};
-use crate::world::Palette;
+use crate::{
+	loader::blockstate::{BlockStates, State},
+	world::Palette,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockState {

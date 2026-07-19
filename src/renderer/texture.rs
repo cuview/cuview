@@ -1,13 +1,16 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::path::Path;
+use std::{
+	collections::{BTreeSet, HashMap, HashSet},
+	path::Path,
+};
 
 use anyhow::Context;
-use glam::{ivec2, uvec2, IVec2, UVec2};
+use glam::{IVec2, UVec2, ivec2, uvec2};
 
 use super::model::ModelCache;
-use crate::jarfs::JarFS;
-use crate::types::resource_location::ResourceKind;
-use crate::types::ResourceLocation;
+use crate::{
+	jarfs::JarFS,
+	types::{ResourceLocation, resource_location::ResourceKind},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TextureId {
@@ -278,7 +281,9 @@ impl Image {
 		});
 
 		let mut reader = decoder.read_info()?;
-		let num_pixels = reader.output_buffer_size().expect("output image is too large to fit into RAM");
+		let num_pixels = reader
+			.output_buffer_size()
+			.expect("output image is too large to fit into RAM");
 		let mut src_pixels = vec![0u8; num_pixels];
 		let info = reader.next_frame(&mut src_pixels).unwrap();
 		assert_eq!(info.bit_depth, png::BitDepth::Eight);
@@ -293,11 +298,7 @@ impl Image {
 				let chunks = src_pixels.chunks_exact(3);
 				assert!(chunks.remainder().is_empty());
 				chunks
-					.map(|chunk| {
-						u32::from_be_bytes([
-							0xFF, chunk[2], chunk[1], chunk[0],
-						])
-					})
+					.map(|chunk| u32::from_be_bytes([0xFF, chunk[2], chunk[1], chunk[0]]))
 					.collect()
 			},
 			png::ColorType::Grayscale => {
@@ -400,33 +401,19 @@ fn test_image() {
 	};
 	let src = Image {
 		size: uvec2(2, 1),
-		pixels: vec![
-			0xFFFF_FFFF,
-			0xFFFF_0000,
-		],
+		pixels: vec![0xFFFF_FFFF, 0xFFFF_0000],
 	};
 
 	dest.blit_from(&src, uvec2(0, 0), None);
-	assert_eq!(
-		dest.pixels,
-		[
-			0xFFFF_FFFF,
-			0xFFFF_0000,
-			0,
-			0
-		]
-	);
+	assert_eq!(dest.pixels, [0xFFFF_FFFF, 0xFFFF_0000, 0, 0]);
 
 	dest.blit_from(&src, uvec2(0, 1), None);
-	assert_eq!(
-		dest.pixels,
-		[
-			0xFFFF_FFFF,
-			0xFFFF_0000,
-			0xFFFF_FFFF,
-			0xFFFF_0000
-		]
-	);
+	assert_eq!(dest.pixels, [
+		0xFFFF_FFFF,
+		0xFFFF_0000,
+		0xFFFF_FFFF,
+		0xFFFF_0000
+	]);
 
 	dest.pixels.fill(0);
 	dest.blit_from(&src, uvec2(0, 0), Some(uvec2(1, 1)));

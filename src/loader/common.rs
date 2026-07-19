@@ -1,6 +1,8 @@
-use std::convert::TryInto;
-use std::io::{self, Read};
-use std::path::Path;
+use std::{
+	convert::TryInto,
+	io::{self, Read},
+	path::Path,
+};
 
 use serde::de::DeserializeOwned;
 

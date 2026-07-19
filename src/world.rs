@@ -1,16 +1,24 @@
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::ops::Range;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Weak};
-use std::{fmt, io};
+use std::{
+	borrow::Borrow,
+	collections::HashMap,
+	fmt,
+	fmt::Debug,
+	io,
+	ops::Range,
+	path::{Path, PathBuf},
+	sync::{Arc, Weak},
+};
 
-use crate::loader::common::AnvilRegion;
-use crate::types::blockstate::{BlockState, BlockStateBuilder};
-use crate::types::coords::{ChunkPos, RegionPos};
-use crate::types::shared::{Shared, WeakShared};
-use crate::types::{BlockPos, ResourceLocation};
+use crate::{
+	loader::common::AnvilRegion,
+	types::{
+		BlockPos,
+		ResourceLocation,
+		blockstate::{BlockState, BlockStateBuilder},
+		coords::{ChunkPos, RegionPos},
+		shared::{Shared, WeakShared},
+	},
+};
 
 pub struct World {
 	this: WeakShared<Self>,

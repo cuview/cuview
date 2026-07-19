@@ -1,6 +1,4 @@
-use std::num::ParseIntError;
-use std::ops::RangeInclusive;
-use std::str::FromStr;
+use std::{num::ParseIntError, ops::RangeInclusive, str::FromStr};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BlockPos {
@@ -67,7 +65,8 @@ pub struct ChunkPos {
 
 impl ChunkPos {
 	pub const DIAMETER_BLOCKS: i32 = 16;
-	pub const SECTIONS: RangeInclusive<i8> = (BlockPos::MIN_HEIGHT / Self::DIAMETER_BLOCKS) as i8 ..=
+	pub const SECTIONS: RangeInclusive<i8> = (BlockPos::MIN_HEIGHT / Self::DIAMETER_BLOCKS)
+		as i8 ..=
 		(BlockPos::MAX_HEIGHT / Self::DIAMETER_BLOCKS) as i8;
 
 	pub fn new(x: i32, z: i32) -> Self {
@@ -190,7 +189,10 @@ impl RegionPos {
 	}
 
 	pub fn min_chunk(&self) -> ChunkPos {
-		ChunkPos::new(self.x * Self::DIAMETER_CHUNKS, self.z * Self::DIAMETER_CHUNKS)
+		ChunkPos::new(
+			self.x * Self::DIAMETER_CHUNKS,
+			self.z * Self::DIAMETER_CHUNKS,
+		)
 	}
 
 	pub fn max_chunk(&self) -> ChunkPos {

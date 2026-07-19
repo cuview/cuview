@@ -1,13 +1,16 @@
-use std::fs::{read_dir, File, FileType};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+	fs::{File, FileType, read_dir},
+	path::{Path, PathBuf},
+	sync::Arc,
+};
 
 use anyhow::anyhow;
 
 use self::common::AnvilRegion;
-use crate::types::shared::Shared;
-use crate::types::{ChunkPos, RegionPos, ResourceLocation};
-use crate::world::{Chunk, Dimension, Region, World};
+use crate::{
+	types::{ChunkPos, RegionPos, ResourceLocation, shared::Shared},
+	world::{Chunk, Dimension, Region, World},
+};
 
 pub mod blockstate;
 pub mod common;

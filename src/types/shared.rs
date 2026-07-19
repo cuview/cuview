@@ -1,7 +1,9 @@
-use std::fmt;
-use std::fmt::Debug;
-use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
+use std::{
+	fmt,
+	fmt::Debug,
+	ops::{Deref, DerefMut},
+	sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak},
+};
 
 pub struct Shared<T>(Arc<RwLock<T>>);
 

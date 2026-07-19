@@ -2,12 +2,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer};
 
-use super::common::{biterator, AnvilRegion};
-use super::WorldLoader;
-use crate::types::blockstate::BlockStateBuilder;
-use crate::types::shared::Shared;
-use crate::types::{ChunkPos, RegionPos, ResourceLocation};
-use crate::world;
+use super::{
+	WorldLoader,
+	common::{AnvilRegion, biterator},
+};
+use crate::{
+	types::{ChunkPos, RegionPos, ResourceLocation, blockstate::BlockStateBuilder, shared::Shared},
+	world,
+};
 
 struct Loader;
 
