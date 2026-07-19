@@ -3,19 +3,17 @@ use std::collections::HashSet;
 use std::fmt::{self, Debug, Display};
 use std::ptr::eq as ptr_eq;
 use std::str::FromStr;
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 
 use serde::de::{DeserializeOwned, Visitor};
 use serde::Deserialize;
 
 use crate::JsonValue;
 
-#[derive(Clone, Copy, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord)]
 pub struct IString(&'static str);
 
-lazy_static::lazy_static! {
-	static ref internedStrings: RwLock<HashSet<&'static str>> = RwLock::new(HashSet::new());
-}
+static internedStrings: LazyLock<RwLock<HashSet<&'static str>>> = LazyLock::new(Default::default);
 
 thread_local! {
 	static lowercaseBuffer: RefCell<String> = RefCell::new(String::new());
@@ -87,6 +85,12 @@ impl std::borrow::Borrow<str> for IString {
 impl PartialEq for IString {
 	fn eq(&self, other: &Self) -> bool {
 		ptr_eq(self.0, other.0)
+	}
+}
+
+impl std::hash::Hash for IString {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		std::ptr::hash(self.0, state)
 	}
 }
 

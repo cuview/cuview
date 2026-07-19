@@ -268,7 +268,8 @@ impl Image {
 	}
 
 	pub fn from_png_bytes(bytes: &[u8], p: &Path) -> anyhow::Result<Self> {
-		let mut decoder = png::Decoder::new(bytes);
+		let mut cursor = std::io::Cursor::new(bytes);
+		let mut decoder = png::Decoder::new(cursor);
 		decoder.set_ignore_text_chunk(true);
 		decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
 		decoder.set_limits(png::Limits {
@@ -277,7 +278,8 @@ impl Image {
 		});
 
 		let mut reader = decoder.read_info()?;
-		let mut srcPixels = vec![0u8; reader.output_buffer_size()];
+		let numPixels = reader.output_buffer_size().expect("output image is too large to fit into RAM");
+		let mut srcPixels = vec![0u8; numPixels];
 		let info = reader.next_frame(&mut srcPixels).unwrap();
 		assert_eq!(info.bit_depth, png::BitDepth::Eight);
 
