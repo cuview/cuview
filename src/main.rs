@@ -31,7 +31,7 @@ use model::MultipartWhen;
 use wgpu::util::{DeviceExt, DrawIndirect};
 use wgpu::Extent3d;
 
-#[cfg(none)]
+#[cfg(false)]
 fn main() {
 	let fs = cuview::jarfs::JarFS::new(vec![
 		Path::new("client-1.18.2.jar"),
@@ -51,7 +51,7 @@ fn main() {
 	// blockstates.0.retain(|&k, _| k.name.as_str() == "sandstone_wall");
 	/* let k = blockstates.0.keys().copied().next().unwrap();
 	blockstates.0.get_mut(&k).unwrap().states.truncate(1); */
-	#[cfg(none)]
+	#[cfg(false)]
 	blockstates.0.insert(
 		"cuview:test".into(),
 		blockstate::BlockDefinition {
@@ -78,7 +78,7 @@ fn main() {
 	dbg!(test3, modelsForState.get(&test3));
 }
 
-#[cfg(none)]
+#[cfg(false)]
 fn main() {
 	let fs = cuview::jarfs::JarFS::new(vec![
 		Path::new("client-1.18.2.jar"),
@@ -188,7 +188,7 @@ enum CameraArgs {
 	Perspective {},
 }
 
-// #[cfg(none)]
+// #[cfg(false)]
 fn main() {
 	let mut args = Args::parse();
 
@@ -279,7 +279,7 @@ fn main() {
 	}
 	dbg!(blocks); */
 
-	#[cfg(none)]
+	#[cfg(false)]
 	pollster::block_on(async {
 		let instance = wgpu::Instance::new(wgpu::Backends::all());
 		let adapter = instance
@@ -330,7 +330,7 @@ fn main() {
 		} */
 	});
 
-	// #[cfg(none)]
+	// #[cfg(false)]
 	pollster::block_on(async {
 		let instance = wgpu::Instance::new(wgpu::Backends::all());
 		let adapter = instance
@@ -367,7 +367,7 @@ fn main() {
 				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 				mapped_at_creation: false,
 			});
-			// #[cfg(none)]
+			// #[cfg(false)]
 			let projection = Mat4::perspective_rh(
 				110f32.to_radians(),
 				imgWidth as f32 / imgHeight as f32,
@@ -468,7 +468,7 @@ fn main() {
 		};
 
 		let (cartographer, blockTextureLayers) = Cartographer::load(&fs, &models, &device).unwrap();
-		#[cfg(none)]
+		#[cfg(false)]
 		{
 			let base = PathBuf::from("./aout/");
 			std::fs::remove_dir_all(&base).unwrap_or_default();
@@ -893,7 +893,7 @@ fn main() {
 		writer.write_image_data(&pixels).unwrap();
 	});
 
-	#[cfg(none)]
+	#[cfg(false)]
 	{
 		// searching for chunks using global palette
 		let regions = loader.probe_regions(&dim);
@@ -953,7 +953,7 @@ impl ImgBufferSize {
 	}
 }
 
-#[cfg(none)]
+#[cfg(false)]
 pub fn parse_nbt_value<T: DeserializeOwned>(v: &nbt::Value) -> Result<T, nbt::Error> {
 	use serde::de::DeserializeOwned;
 	let mut buf = Vec::new();

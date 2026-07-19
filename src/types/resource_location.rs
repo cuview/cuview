@@ -137,7 +137,7 @@ impl Debug for ResourceLocation {
 	}
 }
 
-#[cfg(none)]
+#[cfg(false)]
 impl<'de> Deserialize<'de> for ResourceLocation {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
