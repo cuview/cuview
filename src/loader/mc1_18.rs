@@ -34,7 +34,7 @@ impl WorldLoader for Loader {
 					let mut state = BlockStateBuilder::new(raw_bs.name.as_str().into());
 					if let Some(props) = raw_bs.properties.as_ref() {
 						for (k, v) in props {
-							state.set_property(k.as_str().into(), v.as_str().into());
+							state.set_property(k.as_str(), v.as_str());
 						}
 					}
 					state.build()

@@ -63,7 +63,7 @@ fn test_blockstate() {
 	let s1 = BlockState::stateless(block);
 	let s2 = BlockState::stateless(block);
 	assert!(s1 == s2);
-	assert!(s1.get_property("abc") == None);
+	assert!(s1.get_property("abc").is_none());
 
 	let state = BlockState {
 		block,
@@ -93,12 +93,11 @@ impl BlockStateBuilder {
 	}
 
 	pub fn from_variants_model(block: ResourceLocation, props: &str) -> Self {
-		assert!(props.len() > 0);
+		assert!(!props.is_empty());
 		let mut this = Self::new(block);
 		for prop in props.split(",") {
-			let mut split = prop.splitn(2, "=");
-			let key = split.next().unwrap();
-			let value = split.next().unwrap();
+			let (key, value) = prop.split_once("=").unwrap();
+
 			this.set_property(key, value);
 		}
 		this
@@ -136,7 +135,7 @@ impl BlockStateBuilder {
 fn test_builder() {
 	let block = "test".into();
 	let mut builder = BlockStateBuilder::new(block);
-	assert!(builder.get_property("abc") == None);
+	assert!(builder.get_property("abc").is_none());
 
 	builder.set_property("def", "1");
 	assert!(builder.get_property("def") == Some("1"));
@@ -149,6 +148,12 @@ fn test_builder() {
 
 #[derive(Clone, Debug)]
 pub struct BlockStateCache(HashMap<ResourceLocation, Vec<BlockState>>);
+
+impl Default for BlockStateCache {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
 impl BlockStateCache {
 	pub fn new() -> Self {

@@ -112,8 +112,7 @@ impl Cartographer {
 			let diameter = img.size.x as usize;
 			let atlas = if let Some(atlas) = atlases
 				.iter_mut()
-				.filter(|a| a.tex_diameter == diameter && !a.full(max_texture_diameter))
-				.next()
+				.find(|a| a.tex_diameter == diameter && !a.full(max_texture_diameter))
 			{
 				atlas
 			} else {
@@ -277,7 +276,6 @@ impl Image {
 		decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
 		decoder.set_limits(png::Limits {
 			bytes: 32 * 1024 * 1024,
-			..Default::default()
 		});
 
 		let mut reader = decoder.read_info()?;
@@ -380,7 +378,7 @@ impl Image {
 		while l < r {
 			let (li, lr) = (l * width, r * width);
 			let (ls, rs) = self.pixels.split_at_mut(lr);
-			(&mut ls[li .. li + width]).swap_with_slice(&mut rs[0 .. width]);
+			ls[li .. li + width].swap_with_slice(&mut rs[0 .. width]);
 			l += 1;
 			r -= 1;
 		}

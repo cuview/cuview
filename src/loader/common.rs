@@ -25,10 +25,9 @@ impl AnvilRegion {
 
 		let file_len = file.metadata()?.len() as usize;
 		if file_len & 0xFFF != 0 {
-			return Err(io::Error::new(
-				io::ErrorKind::Other,
-				format!("{region_file_name}: file size is not a multiple of 4KiB"),
-			));
+			return Err(io::Error::other(format!(
+				"{region_file_name}: file size is not a multiple of 4KiB"
+			)));
 		}
 
 		let mut bytes = Vec::with_capacity(file_len);
@@ -104,7 +103,7 @@ pub fn biterator(bits: usize, mut words: &[u64]) -> impl '_ + Iterator<Item = u3
 	words = &words[1 ..];
 	let mut bits_remaining = u64::BITS;
 	std::iter::from_fn(move || {
-		if bits_remaining == 0 && words.len() == 0 {
+		if bits_remaining == 0 && words.is_empty() {
 			None
 		} else {
 			if bits_remaining == 0 {

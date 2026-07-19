@@ -242,8 +242,8 @@ pub enum Texture {
 
 impl From<&str> for Texture {
 	fn from(str: &str) -> Self {
-		if str.starts_with("#") {
-			Self::Slot((&str[1 ..]).into())
+		if let Some(stripped) = str.strip_prefix("#") {
+			Self::Slot(stripped.into())
 		} else {
 			Self::Asset(str.into())
 		}
@@ -302,6 +302,12 @@ impl Model {
 
 pub struct ModelCache(BTreeMap<ResourceLocation, Model>);
 
+impl Default for ModelCache {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl ModelCache {
 	const PLACEHOLDER_MODEL_IDS: &'static [&'static str] = &[
 		"cuview:missing_model",
@@ -319,12 +325,12 @@ impl ModelCache {
 
 	pub fn from_jsons(fs: &JarFS) -> Self {
 		let parse_model = |path: &Path| {
-			let (loc, _) = ResourceLocation::from_path(&path);
+			let (loc, _) = ResourceLocation::from_path(path);
 			let ctx = format!("parsing json model `{loc}` ({path:?})");
 			// first parsing as a `Value` allows duplicate fields (some mods have
 			// copypasta'd models...)
 			let json: serde_json::Value =
-				serde_json::from_str(&fs.read_text(&path).context(ctx.clone()).unwrap())
+				serde_json::from_str(&fs.read_text(path).context(ctx.clone()).unwrap())
 					.context(ctx.clone())
 					.unwrap();
 			let model: JsonModel = serde_json::from_value(json).context(ctx).unwrap();
@@ -353,17 +359,18 @@ impl ModelCache {
 			.collect();
 		let mut new_parents = HashSet::new();
 		loop {
-			if parents.len() == 0 {
+			if parents.is_empty() {
 				break;
 			}
 
 			for &parent in &parents {
 				let path = parent.into_path(ResourceKind::Model);
 				let (_, model) = parse_model(&path);
-				if let Some(new_parent) = model.parent {
-					if !jsons.contains_key(&new_parent) && !placeholders.contains(&new_parent) {
-						new_parents.insert(new_parent);
-					}
+				if let Some(new_parent) = model.parent &&
+					!jsons.contains_key(&new_parent) &&
+					!placeholders.contains(&new_parent)
+				{
+					new_parents.insert(new_parent);
 				}
 				jsons.insert(parent, model);
 			}
@@ -407,14 +414,14 @@ impl ModelCache {
 				}
 			}) {
 				let json = jsons.get(&loc).unwrap();
-				let parent = json.parent.map(|p| cache.get(&p)).flatten();
+				let parent = json.parent.and_then(|p| cache.get(&p));
 
 				let mut texture_slots = parent
 					.map(|p| p.texture_slots.clone())
-					.unwrap_or_else(|| BTreeMap::new());
+					.unwrap_or_else(BTreeMap::new);
 				if let Some(textures) = &json.textures {
 					for (k, v) in textures {
-						texture_slots.insert(k.clone(), v.as_str().into());
+						texture_slots.insert(*k, v.as_str().into());
 					}
 				}
 
@@ -461,7 +468,9 @@ impl ModelCache {
 						}
 					}
 				} else {
-					faces = parent.map(|v| v.faces.clone()).unwrap_or_else(|| vec![]);
+					faces = parent
+						.map(|v| v.faces.clone())
+						.unwrap_or_else(std::vec::Vec::new);
 				}
 
 				new_models.push((loc, Model {
@@ -602,7 +611,7 @@ pub fn models_for_states(
 			continue;
 		}
 		let json: JsonBlockState = serde_json::from_str(&json.unwrap())
-			.expect(&format!("Malformed blockstate json for {block}"));
+			.unwrap_or_else(|_| panic!("Malformed blockstate json for {block}"));
 		blockstate_jsons.insert(block, json);
 	}
 
@@ -651,10 +660,12 @@ pub fn models_for_states(
 				JsonBlockState::Multipart(parts) => {
 					let case_matches = |case: &MultipartCase| -> bool {
 						for (k, vs) in &case.0 {
-							let expected = state.get_property(&k).expect(&format!(
-								"Blockstate JSON for {block} matches on property `{k}` which is \
-								 not defined in blockstate dump"
-							));
+							let expected = state.get_property(k).unwrap_or_else(|| {
+								panic!(
+									"Blockstate JSON for {block} matches on property `{k}` which \
+									 is not defined in blockstate dump"
+								)
+							});
 							if vs.0.iter().all(|v| v != expected) {
 								return false;
 							}
@@ -690,7 +701,7 @@ pub fn models_for_states(
 			}
 		}
 
-		if models.len() == 0 || json.is_none() {
+		if models.is_empty() || json.is_none() {
 			if json.is_some() {
 				// eprintln!("Blockstate JSON has no mapping for state
 				// {state}");
@@ -758,7 +769,7 @@ pub fn export_wavefront(models: &[(&str, &Model)], mtl_filename: &str) -> (Strin
 			let (r, g, b) = (
 				((color & 0xFF0000) >> 16) as f32 / 255.0,
 				((color & 0x00FF00) >> 8) as f32 / 255.0,
-				((color & 0x0000FF) >> 0) as f32 / 255.0,
+				(color & 0x0000FF) as f32 / 255.0,
 			);
 			mtl.write_fmt(format_args!("Kd {r:.3} {g:.3} {b:.3}\n"))
 				.unwrap();
@@ -772,7 +783,7 @@ pub fn export_wavefront(models: &[(&str, &Model)], mtl_filename: &str) -> (Strin
 				vert_index += 4;
 				obj.write_fmt(format_args!(
 					"f {0}/{0} {1}/{1} {2}/{2}\nf {1}/{1} {3}/{3} {2}/{2}\n",
-					base_vert + 0,
+					base_vert,
 					base_vert + 1,
 					base_vert + 2,
 					base_vert + 3

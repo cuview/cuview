@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Steven Dwy <yoplitein+git@gmail.com>"]
 edition = "2024"
 
+[lints.clippy]
+# clashes with formatting conventions
+tabs_in_doc_comments = "allow"
+
 [lib]
 name = "cuview"
 path = "src/lib.rs"

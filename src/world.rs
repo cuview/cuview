@@ -121,7 +121,7 @@ impl Dimension {
 	}
 
 	pub fn get_region(&self, pos: RegionPos) -> Option<Shared<Region>> {
-		self.regions.get(&pos).map(Shared::clone)
+		self.regions.get(&pos).cloned()
 	}
 
 	pub fn is_region_loaded(&self, pos: RegionPos) -> bool {
@@ -190,7 +190,7 @@ impl Region {
 	}
 
 	pub fn get_chunk(&self, pos: ChunkPos) -> Option<Shared<Chunk>> {
-		self.chunks.get(&pos).map(Shared::clone)
+		self.chunks.get(&pos).cloned()
 	}
 }
 
@@ -251,7 +251,7 @@ impl Chunk {
 	}
 
 	pub fn get_section(&self, y: i8) -> Option<Shared<ChunkSection>> {
-		self.sections.get(&y).map(Shared::clone)
+		self.sections.get(&y).cloned()
 	}
 
 	pub fn sections(&self) -> Range<i8> {
@@ -383,6 +383,12 @@ pub struct Palette {
 	loc_to_id: HashMap<BlockState, u32>,
 }
 
+impl Default for Palette {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Palette {
 	pub fn new() -> Self {
 		Self {
@@ -415,11 +421,11 @@ impl Palette {
 	}
 
 	pub fn get_state(&self, id: u32) -> Option<BlockState> {
-		self.id_to_loc.get(&id).map(|v| *v)
+		self.id_to_loc.get(&id).copied()
 	}
 
 	pub fn get_id(&self, block: BlockState) -> Option<u32> {
-		self.loc_to_id.get(&block).map(|v| *v)
+		self.loc_to_id.get(&block).copied()
 	}
 
 	pub fn bits(&self) -> usize {

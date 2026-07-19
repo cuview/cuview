@@ -218,7 +218,7 @@ fn main() {
 	}
 
 	let version = identify_version(&world_root);
-	if version == None {
+	if version.is_none() {
 		eprintln!("Couldn't determine Minecraft version of the given world");
 		exit(1);
 	}
@@ -549,9 +549,7 @@ fn main() {
 				bytemuck::cast_slice(&layer.pixels),
 				wgpu::TexelCopyBufferLayout {
 					offset: 0,
-					bytes_per_row: Some(
-						(layer.size.x * size_of::<u32>() as u32).try_into().unwrap(),
-					),
+					bytes_per_row: Some(layer.size.x * size_of::<u32>() as u32),
 					rows_per_image: None,
 				},
 				wgpu::Extent3d {
@@ -880,11 +878,7 @@ fn main() {
 					buffer: &frame_copy_buffer,
 					layout: wgpu::TexelCopyBufferLayout {
 						offset: 0,
-						bytes_per_row: Some(
-							(frame_copy_buffer_size.bpl_padded as u32)
-								.try_into()
-								.unwrap(),
-						),
+						bytes_per_row: Some(frame_copy_buffer_size.bpl_padded as u32),
 						rows_per_image: None,
 					},
 				},

@@ -20,7 +20,7 @@ pub struct IString(&'static str);
 static INTERNED_STRINGS: LazyLock<RwLock<HashSet<&'static str>>> = LazyLock::new(Default::default);
 
 thread_local! {
-	static LOWERCASE_BUFFER: RefCell<String> = RefCell::new(String::new());
+	static LOWERCASE_BUFFER: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 impl IString {

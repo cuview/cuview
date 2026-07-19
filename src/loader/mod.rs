@@ -65,8 +65,8 @@ impl WorldWrangler {
 	pub fn probe_regions(&self, dimension: &Shared<Dimension>) -> Vec<RegionPos> {
 		let mut res = Vec::with_capacity(32usize.pow(2));
 		let region_dir = dimension.borrow().region_dir();
-		let dir =
-			read_dir(&region_dir).expect(&format!("could not read region dir `{region_dir:?}`"));
+		let dir = read_dir(&region_dir)
+			.unwrap_or_else(|_| panic!("could not read region dir `{region_dir:?}`"));
 		for entry in dir {
 			if entry.is_err() {
 				continue;
