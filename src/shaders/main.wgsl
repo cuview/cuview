@@ -19,6 +19,7 @@ struct VOut {
 	@location(0)
 	uv: vec2<f32>,
 	
+	@interpolate(flat)
 	@location(1)
 	texLayer: u32,
 }
@@ -40,7 +41,7 @@ var<storage, read> atlasDiameters: array<u32>;
 @binding(2)
 var atlas: texture_2d_array<f32>;
 
-var<push_constant> section: i32;
+var<immediate> section: i32;
 
 fn translationMat(t: vec3<f32>) -> mat4x4<f32> {
 	return mat4x4<f32>(
@@ -73,17 +74,17 @@ fn rotationMat(axis: vec3<f32>, angle: f32) -> mat4x4<f32> {
 	);
 }
 
-fn blockTranslation(blockId: u32) -> vec3<f32> {
+fn blockTranslation(rawBlockId: u32) -> vec3<f32> {
 	let chunkWidth: u32 = u32(16);
 	let blocksInLayer: u32 = chunkWidth * chunkWidth;
 	
-	let ty = blockId / blocksInLayer;
-	let blockId = blockId - ty * blocksInLayer;
+	let iy = rawBlockId / blocksInLayer;
+	let blockId = rawBlockId - iy * blocksInLayer;
 	let tz = f32(blockId / chunkWidth);
 	let tx = f32(blockId % chunkWidth);
 	
 	// section translation
-	let ty = f32(ty) + 16.0 * f32(section);
+	let ty = f32(iy) + 16.0 * f32(section);
 	
 	// debugging
 	// let tx = tx + 16.0 * f32(section);
@@ -109,9 +110,8 @@ fn vsMain(in: VIn) -> VOut {
 	
 	let pos = camera.projection * camera.view * model * vec4<f32>(in.pos, 1.0);
 	
-	let texId = in.texId;
-	let texLayer = (texId & (0xFFu << 24u)) >> 24u;
-	let texId = texId & 0xFFFFFFu;
+	let texLayer = (in.texId & (0xFFu << 24u)) >> 24u;
+	let texId = in.texId & 0xFFFFFFu;
 	
 	let diameter = atlasDiameters[texLayer];
 	let atlasSize = textureDimensions(atlas);
@@ -122,8 +122,8 @@ fn vsMain(in: VIn) -> VOut {
 		f32(texId / widthInElems),
 	);
 	
-	let uv = vec2<f32>(in.uv.x, 1.0 - in.uv.y); // origin swap
-	let uv = scale * uv + scale * offset;
+	var uv = vec2<f32>(in.uv.x, 1.0 - in.uv.y); // origin swap
+	uv = scale * uv + scale * offset;
 	
 	return VOut(
 		pos,

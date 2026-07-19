@@ -7,3 +7,7 @@ pub mod loader;
 pub mod renderer;
 pub mod types;
 pub mod world;
+
+pub fn default<T: Default>() -> T {
+	T::default()
+}

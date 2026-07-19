@@ -15,6 +15,7 @@ use std::process::exit;
 use anyhow::Context;
 use blockstate::BlockStates;
 use clap::Parser;
+use cuview::default;
 use cuview::jarfs::JarFS;
 use cuview::loader::common::AnvilRegion;
 use cuview::loader::model::{Element, Face as JsonFace, JsonBlockState, JsonModel};
@@ -28,7 +29,7 @@ use cuview::world::Palette;
 use glam::{uvec2, vec2, vec3, Mat4, UVec2, Vec2, Vec3};
 use loader::model::{BlockStateModel, MultipartCase, OneOrMany};
 use model::MultipartWhen;
-use wgpu::util::{DeviceExt, DrawIndirect};
+use wgpu::util::{DeviceExt, DrawIndirectArgs};
 use wgpu::Extent3d;
 
 #[cfg(false)]
@@ -332,12 +333,19 @@ fn main() {
 
 	// #[cfg(false)]
 	pollster::block_on(async {
-		let instance = wgpu::Instance::new(wgpu::Backends::all());
+		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+			backends: default(),
+			flags: default(),
+			memory_budget_thresholds: default(),
+			backend_options: default(),
+			display: None,
+		});
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
 				power_preference: wgpu::PowerPreference::default(),
 				force_fallback_adapter: false,
 				compatible_surface: None,
+				apply_limit_buckets: false,
 			})
 			.await
 			.unwrap();
@@ -345,16 +353,17 @@ fn main() {
 			.request_device(
 				&wgpu::DeviceDescriptor {
 					label: None,
-					features: wgpu::Features::PUSH_CONSTANTS |
-						wgpu::Features::MULTI_DRAW_INDIRECT |
+					required_features: wgpu::Features::IMMEDIATES |
 						wgpu::Features::INDIRECT_FIRST_INSTANCE,
-					limits: wgpu::Limits {
-						max_push_constant_size: 128,
+					required_limits: wgpu::Limits {
+						max_immediate_size: 128,
 						max_texture_dimension_2d: 32768,
 						..wgpu::Limits::default()
 					},
+					experimental_features: wgpu::ExperimentalFeatures::disabled(),
+					memory_hints: wgpu::MemoryHints::Performance,
+					trace: wgpu::Trace::Off,
 				},
-				None,
 			)
 			.await
 			.unwrap();
@@ -431,6 +440,7 @@ fn main() {
 			dimension: wgpu::TextureDimension::D2,
 			format: frame_format,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+			view_formats: &[frame_format],
 		});
 		let frame_texture_multisample = device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("frameTextureMultisample"),
@@ -440,6 +450,7 @@ fn main() {
 			dimension: wgpu::TextureDimension::D2,
 			format: frame_format,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			view_formats: &[frame_format],
 		});
 		let frame_depth_format = wgpu::TextureFormat::Depth24Plus;
 		let frame_depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -450,6 +461,7 @@ fn main() {
 			dimension: wgpu::TextureDimension::D2,
 			format: frame_depth_format,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			view_formats: &[frame_depth_format],
 		});
 		let frame_copy_buffer_size = ImgBufferSize::new(frame_size);
 		let frame_copy_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -462,9 +474,13 @@ fn main() {
 		let surface_config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: frame_format,
+			color_space: wgpu::SurfaceColorSpace::Auto,
 			width: frame_size.width,
 			height: frame_size.height,
 			present_mode: wgpu::PresentMode::Immediate,
+			desired_maximum_frame_latency: 3,
+			alpha_mode: default(),
+			view_formats: vec![],
 		};
 
 		let (cartographer, block_texture_layers) = Cartographer::load(&fs, &models, &device).unwrap();
@@ -498,6 +514,7 @@ fn main() {
 			dimension: wgpu::TextureDimension::D2,
 			format: wgpu::TextureFormat::Rgba8Unorm,
 			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+			view_formats: &[],
 		});
 		let block_texture_view = block_texture.create_view(&wgpu::TextureViewDescriptor {
 			dimension: Some(wgpu::TextureViewDimension::D2Array),
@@ -513,7 +530,7 @@ fn main() {
 			queue.write_texture(
 				dest,
 				bytemuck::cast_slice(&layer.pixels),
-				wgpu::ImageDataLayout {
+				wgpu::TexelCopyBufferLayout {
 					offset: 0,
 					bytes_per_row: Some(
 						(layer.size.x * size_of::<u32>() as u32).try_into().unwrap(),
@@ -555,7 +572,7 @@ fn main() {
 			.map(|_| {
 				device.create_buffer(&wgpu::BufferDescriptor {
 					label: None,
-					size: (SUBMODELS_PER_SECTION * size_of::<wgpu::util::DrawIndirect>())
+					size: (SUBMODELS_PER_SECTION * size_of::<wgpu::util::DrawIndirectArgs>())
 						as wgpu::BufferAddress,
 					usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
 					mapped_at_creation: false,
@@ -657,31 +674,28 @@ fn main() {
 		});
 		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: None,
-			bind_group_layouts: &[&bind_group_layout],
-			push_constant_ranges: &[
-				wgpu::PushConstantRange {
-					range: 0 .. 4,
-					stages: wgpu::ShaderStages::VERTEX,
-				},
-			],
+			bind_group_layouts: &[Some(&bind_group_layout)],
+			immediate_size: 4,
 		});
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: None,
 			layout: Some(&pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: &shader,
-				entry_point: "vsMain",
+				entry_point: Some("vsMain"),
+				compilation_options: default(),
 				buffers: &[
-					wgpu::VertexBufferLayout {
+					Some(wgpu::VertexBufferLayout {
 						array_stride: size_of::<[f32; 6]>() as wgpu::BufferAddress,
 						step_mode: wgpu::VertexStepMode::Vertex,
 						attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Uint32],
-					},
+					}),
 				],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
-				entry_point: "fsMain",
+				entry_point: Some("fsMain"),
+				compilation_options: default(),
 				targets: &[Some(
 					wgpu::ColorTargetState {
 						format: frame_format,
@@ -707,8 +721,8 @@ fn main() {
 			},
 			depth_stencil: Some(wgpu::DepthStencilState {
 				format: wgpu::TextureFormat::Depth24Plus,
-				depth_write_enabled: true,
-				depth_compare: wgpu::CompareFunction::Less,
+				depth_write_enabled: Some(true),
+				depth_compare: Some(wgpu::CompareFunction::Less),
 				stencil: wgpu::StencilState::default(),
 				bias: wgpu::DepthBiasState::default(),
 			}),
@@ -716,7 +730,8 @@ fn main() {
 				count: 4,
 				..Default::default()
 			},
-			multiview: None,
+			multiview_mask: None,
+			cache: None,
 		});
 
 		let mut encoder = device.create_command_encoder(&Default::default());
@@ -733,6 +748,7 @@ fn main() {
 				color_attachments: &[Some(
 					wgpu::RenderPassColorAttachment {
 						view: &multisample_view,
+						depth_slice: None,
 						resolve_target: Some(&color_view),
 						ops: wgpu::Operations {
 							load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -741,7 +757,7 @@ fn main() {
 								b: 0.0,
 								a: 1.0,
 							}),
-							store: true,
+							store: wgpu::StoreOp::Store,
 						},
 					},
 				)],
@@ -749,10 +765,13 @@ fn main() {
 					view: &depth_view,
 					depth_ops: Some(wgpu::Operations {
 						load: wgpu::LoadOp::Clear(1.0),
-						store: true,
+						store: wgpu::StoreOp::Store,
 					}),
 					stencil_ops: None,
 				}),
+				timestamp_writes: None,
+				occlusion_query_set: None,
+				multiview_mask: None,
 			});
 			drop(clear_pass);
 
@@ -790,10 +809,10 @@ fn main() {
 
 							let instance = rot_packed << 12 | block_index as u32;
 							indirect_draws.extend(
-								DrawIndirect {
-									base_vertex: base_vertex as u32,
+								DrawIndirectArgs {
+									first_vertex: base_vertex as u32,
 									vertex_count: num_verts as u32,
-									base_instance: instance,
+									first_instance: instance,
 									instance_count: 1,
 								}
 								.as_bytes(),
@@ -811,10 +830,11 @@ fn main() {
 					color_attachments: &[Some(
 						wgpu::RenderPassColorAttachment {
 							view: &multisample_view,
+							depth_slice: None,
 							resolve_target: Some(&color_view),
 							ops: wgpu::Operations {
 								load: wgpu::LoadOp::Load,
-								store: true,
+								store: wgpu::StoreOp::Store,
 							},
 						},
 					)],
@@ -822,16 +842,18 @@ fn main() {
 						view: &depth_view,
 						depth_ops: Some(wgpu::Operations {
 							load: wgpu::LoadOp::Load,
-							store: true,
+							store: wgpu::StoreOp::Store,
 						}),
 						stencil_ops: None,
 					}),
+					timestamp_writes: None,
+					occlusion_query_set: None,
+					multiview_mask: None,
 				});
 				pass.set_pipeline(&pipeline);
 				pass.set_bind_group(0, &bind_group, &[]);
 				pass.set_vertex_buffer(0, block_models_buffer.slice(..));
-				pass.set_push_constants(
-					wgpu::ShaderStages::VERTEX,
+				pass.set_immediates(
 					0,
 					bytemuck::bytes_of(&(section_y as i32)),
 				);
@@ -839,7 +861,7 @@ fn main() {
 				pass.multi_draw_indirect(
 					indirect_buffer,
 					0,
-					(indirect_draws.len() / size_of::<DrawIndirect>()) as u32,
+					(indirect_draws.len() / size_of::<DrawIndirectArgs>()) as u32,
 				);
 				// drop(pass);
 				// queue.submit(None);
@@ -848,9 +870,9 @@ fn main() {
 
 			encoder.copy_texture_to_buffer(
 				frame_texture.as_image_copy(),
-				wgpu::ImageCopyBuffer {
+				wgpu::TexelCopyBufferInfo {
 					buffer: &frame_copy_buffer,
-					layout: wgpu::ImageDataLayout {
+					layout: wgpu::TexelCopyBufferLayout {
 						offset: 0,
 						bytes_per_row: Some(
 							(frame_copy_buffer_size.bpl_padded as u32).try_into().unwrap(),
@@ -865,11 +887,16 @@ fn main() {
 
 		let slice = frame_copy_buffer.slice(..);
 		slice.map_async(wgpu::MapMode::Read, |_| {});
-		if !device.poll(wgpu::Maintain::WaitForSubmissionIndex(submission)) {
-			std::thread::sleep(std::time::Duration::from_secs_f32(1.5));
+		match device.poll(wgpu::PollType::Wait {
+			submission_index: Some(submission),
+			timeout: Some(std::time::Duration::from_secs_f32(1.5)),
+		}) {
+			Ok(wgpu::PollStatus::Poll) => unreachable!("Device::poll with PollType::Wait should never return PollStatus::Poll"),
+			Ok(wgpu::PollStatus::QueueEmpty | wgpu::PollStatus::WaitSucceeded) => {},
+			Err(err) => panic!("Device::poll failed: {err}"),
 		}
 
-		let padded = slice.get_mapped_range();
+		let padded = slice.get_mapped_range().expect("couldn't map frame copy buffer");
 		let mut pixels = vec![0u8; frame_copy_buffer_size.bpl_unpadded * frame_copy_buffer_size.height];
 		let mut pixslice = &mut pixels[..];
 		for chunk in padded.chunks(frame_copy_buffer_size.bpl_padded) {
