@@ -15,19 +15,19 @@ pub mod mc1_18;
 pub mod model;
 
 pub struct WorldWrangler {
-	rootDir: PathBuf,
+	root_dir: PathBuf,
 	loader: Box<dyn WorldLoader>,
 	world: Shared<World>,
 }
 
 impl WorldWrangler {
-	pub fn new(worldRootDir: impl AsRef<Path>) -> anyhow::Result<Self> {
-		let worldRootDir = worldRootDir.as_ref();
-		let loader = get_loader(worldRootDir)?;
-		let world = World::new(worldRootDir);
+	pub fn new(world_root_dir: impl AsRef<Path>) -> anyhow::Result<Self> {
+		let world_root_dir = world_root_dir.as_ref();
+		let loader = get_loader(world_root_dir)?;
+		let world = World::new(world_root_dir);
 		loader.load_world(&world);
 		Ok(Self {
-			rootDir: worldRootDir.into(),
+			root_dir: world_root_dir.into(),
 			loader,
 			world,
 		})
@@ -35,9 +35,9 @@ impl WorldWrangler {
 
 	pub fn probe_dimensions(&self) -> Vec<(ResourceLocation, PathBuf)> {
 		let mut dimensions = vec![
-			("overworld".into(), self.rootDir.join(".")),
-			("the_end".into(), self.rootDir.join("DIM1")),
-			("the_nether".into(), self.rootDir.join("DIM-1")),
+			("overworld".into(), self.root_dir.join(".")),
+			("the_end".into(), self.root_dir.join("DIM1")),
+			("the_nether".into(), self.root_dir.join("DIM-1")),
 		];
 		dimensions.extend(self.loader.probe_mod_dimensions(&self.world));
 		dimensions
@@ -61,9 +61,9 @@ impl WorldWrangler {
 
 	pub fn probe_regions(&self, dimension: &Shared<Dimension>) -> Vec<RegionPos> {
 		let mut res = Vec::with_capacity(32usize.pow(2));
-		let regionDir = dimension.borrow().region_dir();
+		let region_dir = dimension.borrow().region_dir();
 		let dir =
-			read_dir(&regionDir).expect(&format!("could not read region dir `{regionDir:?}`"));
+			read_dir(&region_dir).expect(&format!("could not read region dir `{region_dir:?}`"));
 		for entry in dir {
 			if entry.is_err() {
 				continue;
@@ -137,9 +137,9 @@ pub trait WorldLoader {
 	fn load_chunk(&self, chunk: &Shared<Chunk>, pos: ChunkPos, anvil: Arc<AnvilRegion>);
 }
 
-pub fn identify_version(worldRoot: impl AsRef<Path>) -> Option<(u8, u8, u8)> {
-	let mut levelDat = File::open(worldRoot.as_ref().join("level.dat")).ok()?;
-	let nbt: nbt::Blob = nbt::from_gzip_reader(&mut levelDat).ok()?;
+pub fn identify_version(world_root: impl AsRef<Path>) -> Option<(u8, u8, u8)> {
+	let mut level_dat = File::open(world_root.as_ref().join("level.dat")).ok()?;
+	let nbt: nbt::Blob = nbt::from_gzip_reader(&mut level_dat).ok()?;
 	let nbt = nbt.get("Data")?;
 
 	let ver = match nbt {
@@ -160,19 +160,19 @@ pub fn identify_version(worldRoot: impl AsRef<Path>) -> Option<(u8, u8, u8)> {
 	Some((v1.parse().ok()?, v2.parse().ok()?, v3.parse().ok()?))
 }
 
-pub fn get_loader(worldRootDir: impl AsRef<Path>) -> anyhow::Result<Box<dyn WorldLoader>> {
-	let worldRoot = worldRootDir.as_ref();
-	if let Some(ver) = identify_version(worldRoot) {
+pub fn get_loader(world_root_dir: impl AsRef<Path>) -> anyhow::Result<Box<dyn WorldLoader>> {
+	let world_root = world_root_dir.as_ref();
+	if let Some(ver) = identify_version(world_root) {
 		return match ver {
-			(1, 18, _) => Ok(mc1_18::make_loader(worldRoot)),
-			(1, 17, _) => Ok(mc1_18::make_loader(worldRoot)), // FIXME
-			(1, 16, _) => Ok(mc1_18::make_loader(worldRoot)),
+			(1, 18, _) => Ok(mc1_18::make_loader(world_root)),
+			(1, 17, _) => Ok(mc1_18::make_loader(world_root)), // FIXME
+			(1, 16, _) => Ok(mc1_18::make_loader(world_root)),
 			_ => Err(anyhow!(
-				"Couldn't find any loader for `{worldRoot:?}` (version {ver:?})",
+				"Couldn't find any loader for `{world_root:?}` (version {ver:?})",
 			)),
 		};
 	}
 	Err(anyhow!(
-		"Couldn't identify Minecraft version of `{worldRoot:?}`",
+		"Couldn't identify Minecraft version of `{world_root:?}`",
 	))
 }

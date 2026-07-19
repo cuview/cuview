@@ -1,4 +1,4 @@
-#![allow(non_snake_case, non_upper_case_globals, unused)]
+#![allow(unused)]
 
 pub(crate) type JsonValue = serde_json::value::Value;
 

@@ -14,27 +14,27 @@ use crate::types::{BlockPos, ResourceLocation};
 
 pub struct World {
 	this: WeakShared<Self>,
-	rootDir: PathBuf,
+	root_dir: PathBuf,
 	dimensions: HashMap<ResourceLocation, Shared<Dimension>>,
 }
 
 impl World {
-	pub fn new(rootDir: impl AsRef<Path>) -> Shared<Self> {
+	pub fn new(root_dir: impl AsRef<Path>) -> Shared<Self> {
 		Shared::new_cyclic(|this| Self {
 			this: this.clone(),
-			rootDir: rootDir.as_ref().into(),
+			root_dir: root_dir.as_ref().into(),
 			dimensions: HashMap::new(),
 		})
 	}
 
 	pub fn root_dir(&self) -> &Path {
-		self.rootDir.borrow()
+		self.root_dir.borrow()
 	}
 
 	pub fn new_dimension(
 		&mut self,
 		id: ResourceLocation,
-		dimensionRoot: &Path,
+		dimension_root: &Path,
 	) -> Shared<Dimension> {
 		debug_assert!(
 			!self.dimensions.contains_key(&id),
@@ -42,7 +42,7 @@ impl World {
 			id
 		);
 		let this = self.this.upgrade().expect("null this");
-		let new = Dimension::new(this, id, dimensionRoot);
+		let new = Dimension::new(this, id, dimension_root);
 		self.dimensions.insert(id, new.clone());
 		new
 	}
@@ -55,7 +55,7 @@ impl World {
 impl Debug for World {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("World")
-			.field("rootDir", &self.rootDir)
+			.field("rootDir", &self.root_dir)
 			.field("dimensions", &self.dimensions)
 			.finish()
 	}
@@ -65,17 +65,17 @@ pub struct Dimension {
 	this: WeakShared<Self>,
 	world: Shared<World>,
 	id: ResourceLocation,
-	rootDir: PathBuf,
+	root_dir: PathBuf,
 	regions: HashMap<RegionPos, Shared<Region>>,
 }
 
 impl Dimension {
-	fn new(world: Shared<World>, id: ResourceLocation, rootDir: &Path) -> Shared<Self> {
+	fn new(world: Shared<World>, id: ResourceLocation, root_dir: &Path) -> Shared<Self> {
 		Shared::new_cyclic(|this| Self {
 			this: this.clone(),
 			world,
 			id,
-			rootDir: rootDir.into(),
+			root_dir: root_dir.into(),
 			regions: HashMap::new(),
 		})
 	}
@@ -85,11 +85,11 @@ impl Dimension {
 	}
 
 	pub fn root_dir(&self) -> &Path {
-		&self.rootDir
+		&self.root_dir
 	}
 
 	pub fn region_dir(&self) -> PathBuf {
-		self.rootDir.join("region")
+		self.root_dir.join("region")
 	}
 
 	pub fn world(&self) -> Shared<World> {
@@ -126,7 +126,7 @@ impl Debug for Dimension {
 		f.debug_struct("Dimension")
 			.field("world", &self.world.borrow().root_dir())
 			.field("id", &self.id)
-			.field("rootDir", &self.rootDir)
+			.field("rootDir", &self.root_dir)
 			.field("regions", &self.regions)
 			.finish()
 	}
@@ -141,8 +141,8 @@ pub struct Region {
 }
 
 impl Region {
-	fn new(dimension: Shared<Dimension>, pos: RegionPos, regionDir: &Path) -> Shared<Self> {
-		let anvil = AnvilRegion::new(regionDir, pos).unwrap().into();
+	fn new(dimension: Shared<Dimension>, pos: RegionPos, region_dir: &Path) -> Shared<Self> {
+		let anvil = AnvilRegion::new(region_dir, pos).unwrap().into();
 		Shared::new_cyclic(|this| Self {
 			this: this.clone(),
 			dimension,
@@ -326,7 +326,7 @@ impl ChunkSection {
 		debug_assert_eq!(ChunkPos::from(pos), self.pos);
 		debug_assert_eq!(pos.section(), self.y);
 		let pos = pos.chunk_relative();
-		((pos.y * ChunkPos::diameterBlocks.pow(2)) + (pos.z * ChunkPos::diameterBlocks) + pos.x)
+		((pos.y * ChunkPos::DIAMETER_BLOCKS.pow(2)) + (pos.z * ChunkPos::DIAMETER_BLOCKS) + pos.x)
 			as usize
 	}
 
@@ -348,9 +348,9 @@ impl ChunkSection {
 		self.blocks.fill(id);
 	}
 
-	pub fn fill_from_iter(&mut self, palettedBlocks: impl Iterator<Item = u32>) {
+	pub fn fill_from_iter(&mut self, paletted_blocks: impl Iterator<Item = u32>) {
 		let mut len = 0;
-		for (pos, id) in self.pos.blocks_in_section(self.y).zip(palettedBlocks) {
+		for (pos, id) in self.pos.blocks_in_section(self.y).zip(paletted_blocks) {
 			len += 1;
 			let index = self.index_of(pos);
 			self.blocks[index] = id;
@@ -371,65 +371,65 @@ impl Debug for ChunkSection {
 
 #[derive(Clone)]
 pub struct Palette {
-	idToLoc: HashMap<u32, BlockState>,
-	locToId: HashMap<BlockState, u32>,
+	id_to_loc: HashMap<u32, BlockState>,
+	loc_to_id: HashMap<BlockState, u32>,
 }
 
 impl Palette {
 	pub fn new() -> Self {
 		Self {
-			idToLoc: HashMap::new(),
-			locToId: HashMap::new(),
+			id_to_loc: HashMap::new(),
+			loc_to_id: HashMap::new(),
 		}
 	}
 
 	pub fn define(&mut self, id: u32, state: BlockState) {
-		let oldState = self.get_state(id);
+		let old_state = self.get_state(id);
 		assert!(
-			oldState.is_none(),
+			old_state.is_none(),
 			"Duplicate states {:?}/{:?} in palette with id {}",
-			oldState.unwrap(),
+			old_state.unwrap(),
 			state,
 			id
 		);
 
-		let oldId = self.get_id(state);
+		let old_id = self.get_id(state);
 		assert!(
-			oldId.is_none(),
+			old_id.is_none(),
 			"Duplicate block {:?} in palette with ids {}/{}",
 			state,
-			oldId.unwrap(),
+			old_id.unwrap(),
 			id
 		);
 
-		self.idToLoc.insert(id, state);
-		self.locToId.insert(state, id);
+		self.id_to_loc.insert(id, state);
+		self.loc_to_id.insert(state, id);
 	}
 
 	pub fn get_state(&self, id: u32) -> Option<BlockState> {
-		self.idToLoc.get(&id).map(|v| *v)
+		self.id_to_loc.get(&id).map(|v| *v)
 	}
 
 	pub fn get_id(&self, block: BlockState) -> Option<u32> {
-		self.locToId.get(&block).map(|v| *v)
+		self.loc_to_id.get(&block).map(|v| *v)
 	}
 
 	pub fn bits(&self) -> usize {
-		let maxId = match self.idToLoc.keys().max() {
+		let max_id = match self.id_to_loc.keys().max() {
 			None => return 0,
 			Some(&v) if v < 16 => return 4,
 			Some(&v) => v,
 		};
 
-		let add = if maxId.count_ones() == 1 { 1 } else { 0 };
-		(maxId.next_power_of_two().trailing_zeros() + add) as usize
+		let add = if max_id.count_ones() == 1 { 1 } else { 0 };
+		(max_id.next_power_of_two().trailing_zeros() + add) as usize
 	}
 }
 
 impl Debug for Palette {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		// print entries in order of id
-		let entries: std::collections::BTreeMap<_, _> = self.idToLoc.iter().collect();
+		let entries: std::collections::BTreeMap<_, _> = self.id_to_loc.iter().collect();
 		f.debug_struct("Palette")
 			.field("entries", &entries)
 			.finish()

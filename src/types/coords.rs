@@ -10,9 +10,9 @@ pub struct BlockPos {
 }
 
 impl BlockPos {
-	pub const columnHeight: i32 = 384;
-	pub const maxHeight: i32 = 319;
-	pub const minHeight: i32 = -64;
+	pub const COLUMN_HEIGHT: i32 = 384;
+	pub const MAX_HEIGHT: i32 = 319;
+	pub const MIN_HEIGHT: i32 = -64;
 
 	pub fn new(x: i32, y: i32, z: i32) -> Self {
 		Self { x, y, z }
@@ -20,9 +20,9 @@ impl BlockPos {
 
 	pub fn chunk_relative(&self) -> Self {
 		Self {
-			x: self.x.rem_euclid(ChunkPos::diameterBlocks),
-			y: self.y.rem_euclid(ChunkPos::diameterBlocks),
-			z: self.z.rem_euclid(ChunkPos::diameterBlocks),
+			x: self.x.rem_euclid(ChunkPos::DIAMETER_BLOCKS),
+			y: self.y.rem_euclid(ChunkPos::DIAMETER_BLOCKS),
+			z: self.z.rem_euclid(ChunkPos::DIAMETER_BLOCKS),
 		}
 	}
 
@@ -66,9 +66,9 @@ pub struct ChunkPos {
 }
 
 impl ChunkPos {
-	pub const diameterBlocks: i32 = 16;
-	pub const sections: RangeInclusive<i8> = (BlockPos::minHeight / Self::diameterBlocks) as i8 ..=
-		(BlockPos::maxHeight / Self::diameterBlocks) as i8;
+	pub const DIAMETER_BLOCKS: i32 = 16;
+	pub const SECTIONS: RangeInclusive<i8> = (BlockPos::MIN_HEIGHT / Self::DIAMETER_BLOCKS) as i8 ..=
+		(BlockPos::MAX_HEIGHT / Self::DIAMETER_BLOCKS) as i8;
 
 	pub fn new(x: i32, z: i32) -> Self {
 		Self { x, z }
@@ -76,24 +76,24 @@ impl ChunkPos {
 
 	pub fn region_relative(&self) -> Self {
 		Self {
-			x: self.x.rem_euclid(RegionPos::diameterChunks),
-			z: self.z.rem_euclid(RegionPos::diameterChunks),
+			x: self.x.rem_euclid(RegionPos::DIAMETER_CHUNKS),
+			z: self.z.rem_euclid(RegionPos::DIAMETER_CHUNKS),
 		}
 	}
 
 	pub fn min_block(&self) -> BlockPos {
 		BlockPos::new(
-			self.x * Self::diameterBlocks,
-			BlockPos::minHeight,
-			self.z * Self::diameterBlocks,
+			self.x * Self::DIAMETER_BLOCKS,
+			BlockPos::MIN_HEIGHT,
+			self.z * Self::DIAMETER_BLOCKS,
 		)
 	}
 
 	pub fn max_block(&self) -> BlockPos {
-		let diameter = Self::diameterBlocks;
+		let diameter = Self::DIAMETER_BLOCKS;
 		BlockPos::new(
 			self.x * diameter + diameter - 1,
-			BlockPos::maxHeight,
+			BlockPos::MAX_HEIGHT,
 			self.z * diameter + diameter - 1,
 		)
 	}
@@ -110,8 +110,8 @@ impl ChunkPos {
 	pub fn blocks_in_section(&self, y: i8) -> impl Iterator<Item = BlockPos> + Clone {
 		let min = self.min_block();
 		let max = self.max_block();
-		let minY = y as i32 * 16;
-		(minY .. minY + Self::diameterBlocks).flat_map(move |y| {
+		let min_y = y as i32 * 16;
+		(min_y .. min_y + Self::DIAMETER_BLOCKS).flat_map(move |y| {
 			(min.z ..= max.z)
 				.flat_map(move |z| (min.x ..= max.x).map(move |x| BlockPos::new(x, y, z)))
 		})
@@ -149,24 +149,24 @@ fn test_chunkpos() {
 	assert!(ChunkPos::from(BlockPos::new(-1, 0, 0)) == pos);
 
 	let pos = ChunkPos::new(0, 0);
-	assert!(pos.min_block() == BlockPos::new(0, BlockPos::minHeight, 0));
-	assert!(pos.max_block() == BlockPos::new(15, BlockPos::maxHeight, 15));
+	assert!(pos.min_block() == BlockPos::new(0, BlockPos::MIN_HEIGHT, 0));
+	assert!(pos.max_block() == BlockPos::new(15, BlockPos::MAX_HEIGHT, 15));
 	assert!(
-		pos.blocks().count() as i32 == ChunkPos::diameterBlocks.pow(2) * BlockPos::columnHeight
+		pos.blocks().count() as i32 == ChunkPos::DIAMETER_BLOCKS.pow(2) * BlockPos::COLUMN_HEIGHT
 	);
 
 	let pos = ChunkPos::new(-1, -1);
-	assert!(pos.min_block() == BlockPos::new(-16, BlockPos::minHeight, -16));
-	assert!(pos.max_block() == BlockPos::new(-1, BlockPos::maxHeight, -1));
+	assert!(pos.min_block() == BlockPos::new(-16, BlockPos::MIN_HEIGHT, -16));
+	assert!(pos.max_block() == BlockPos::new(-1, BlockPos::MAX_HEIGHT, -1));
 
-	let sectionBlocks: Vec<_> = pos.blocks_in_section(0).collect();
-	assert!(sectionBlocks.len() as i32 == ChunkPos::diameterBlocks.pow(3));
-	assert!(sectionBlocks[0].y == 0);
-	assert!(sectionBlocks.last().unwrap().y == 15);
+	let section_blocks: Vec<_> = pos.blocks_in_section(0).collect();
+	assert!(section_blocks.len() as i32 == ChunkPos::DIAMETER_BLOCKS.pow(3));
+	assert!(section_blocks[0].y == 0);
+	assert!(section_blocks.last().unwrap().y == 15);
 
-	let sectionBlocks: Vec<_> = pos.blocks_in_section(-1).collect();
-	assert!(sectionBlocks.first().unwrap().y == -16);
-	assert!(sectionBlocks.last().unwrap().y == -1);
+	let section_blocks: Vec<_> = pos.blocks_in_section(-1).collect();
+	assert!(section_blocks.first().unwrap().y == -16);
+	assert!(section_blocks.last().unwrap().y == -1);
 
 	let pos = ChunkPos::from_str("0,0");
 	assert!(pos == Ok(ChunkPos::new(0, 0)));
@@ -183,18 +183,18 @@ pub struct RegionPos {
 }
 
 impl RegionPos {
-	pub const diameterChunks: i32 = 32;
+	pub const DIAMETER_CHUNKS: i32 = 32;
 
 	pub fn new(x: i32, z: i32) -> Self {
 		Self { x, z }
 	}
 
 	pub fn min_chunk(&self) -> ChunkPos {
-		ChunkPos::new(self.x * Self::diameterChunks, self.z * Self::diameterChunks)
+		ChunkPos::new(self.x * Self::DIAMETER_CHUNKS, self.z * Self::DIAMETER_CHUNKS)
 	}
 
 	pub fn max_chunk(&self) -> ChunkPos {
-		let diameter = Self::diameterChunks;
+		let diameter = Self::DIAMETER_CHUNKS;
 		ChunkPos::new(
 			self.x * diameter + diameter - 1,
 			self.z * diameter + diameter - 1,
@@ -240,7 +240,7 @@ fn test_regionpos() {
 	let pos = RegionPos::new(0, 0);
 	assert!(pos.min_chunk() == ChunkPos::new(0, 0));
 	assert!(pos.max_chunk() == ChunkPos::new(31, 31));
-	assert!(pos.chunks().count() as i32 == RegionPos::diameterChunks.pow(2));
+	assert!(pos.chunks().count() as i32 == RegionPos::DIAMETER_CHUNKS.pow(2));
 
 	let pos = RegionPos::new(-1, -1);
 	assert!(pos.min_chunk() == ChunkPos::new(-32, -32));

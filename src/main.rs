@@ -1,4 +1,4 @@
-#![allow(non_snake_case, non_upper_case_globals, unused)]
+#![allow(unused)]
 
 use std::borrow::{Borrow, Cow};
 use std::collections::hash_map::DefaultHasher;
@@ -127,16 +127,16 @@ struct Args {
 	jarlist: Option<PathBuf>,
 
 	#[arg(short, long)]
-	worldRoot: PathBuf,
+	world_root: PathBuf,
 
 	#[arg(short, long)]
-	targetChunk: ChunkPos,
+	target_chunk: ChunkPos,
 
 	#[arg(long, default_value_t = Vec3Arg(vec3(-5.0, 4.0, -5.0)))]
-	cameraOrigin: Vec3Arg,
+	camera_origin: Vec3Arg,
 
 	#[arg(long, default_value_t = Vec2Arg(Vec2::splat(0.0)))]
-	cameraAngles: Vec2Arg,
+	camera_angles: Vec2Arg,
 }
 
 macro_rules! replace {
@@ -194,14 +194,14 @@ fn main() {
 
 	dbg!(&args);
 
-	let worldRoot = args.worldRoot;
-	if !worldRoot.is_dir() {
-		let worldDir = worldRoot.display();
-		eprintln!("{worldDir} is not a directory");
+	let world_root = args.world_root;
+	if !world_root.is_dir() {
+		let world_dir = world_root.display();
+		eprintln!("{world_dir} is not a directory");
 		exit(1);
 	}
 
-	let version = identify_version(&worldRoot);
+	let version = identify_version(&world_root);
 	if version == None {
 		eprintln!("Couldn't determine Minecraft version of the given world");
 		exit(1);
@@ -226,14 +226,14 @@ fn main() {
 	let models = ModelCache::from_jsons(&fs);
 	let statemap = models_for_states(&fs, &blockstates);
 
-	let wrangler = WorldWrangler::new(worldRoot).unwrap();
+	let wrangler = WorldWrangler::new(world_root).unwrap();
 
 	let dim = wrangler.probe_dimension("overworld".into()).unwrap();
 	let dim = wrangler.load_dimension(dim);
 
-	let targetChunk = args.targetChunk;
-	let region = wrangler.load_region(&dim, targetChunk.into());
-	let chunk = wrangler.load_chunk(&region, targetChunk);
+	let target_chunk = args.target_chunk;
+	let region = wrangler.load_region(&dim, target_chunk.into());
+	let chunk = wrangler.load_chunk(&region, target_chunk);
 	let chunk = chunk.borrow();
 	/*let world = cuview::world::World::new(&worldRoot);
 	let dim = world.borrow_mut().new_dimension("overworld".into(), &worldRoot);
@@ -359,9 +359,9 @@ fn main() {
 			.await
 			.unwrap();
 
-		let (cameraBuffer, imgWidth, imgHeight) = {
-			let (imgWidth, imgHeight) = (1280, 720);
-			let cameraBuffer = device.create_buffer(&wgpu::BufferDescriptor {
+		let (camera_buffer, img_width, img_height) = {
+			let (img_width, img_height) = (1280, 720);
+			let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 				label: None,
 				size: size_of::<[f32; 32]>() as wgpu::BufferAddress,
 				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -370,16 +370,16 @@ fn main() {
 			// #[cfg(false)]
 			let projection = Mat4::perspective_rh(
 				110f32.to_radians(),
-				imgWidth as f32 / imgHeight as f32,
+				img_width as f32 / img_height as f32,
 				0.01,
 				1000.0,
 			);
-			let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
-				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
+			let rot = Mat4::from_rotation_y(args.camera_angles.0.y.to_radians()) *
+				Mat4::from_rotation_x(args.camera_angles.0.x.to_radians());
 			let forward = rot.transform_vector3(Vec3::Z);
 			dbg!(forward);
 			let camera =
-				Mat4::look_at_rh(args.cameraOrigin.0, args.cameraOrigin.0 + forward, Vec3::Y);
+				Mat4::look_at_rh(args.camera_origin.0, args.camera_origin.0 + forward, Vec3::Y);
 
 			/* let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
 				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
@@ -400,9 +400,9 @@ fn main() {
 				1000.0,
 			); */
 
-			queue.write_buffer(&cameraBuffer, 0, bytemuck::cast_slice(projection.as_ref()));
+			queue.write_buffer(&camera_buffer, 0, bytemuck::cast_slice(projection.as_ref()));
 			queue.write_buffer(
-				&cameraBuffer,
+				&camera_buffer,
 				size_of::<[f32; 16]>() as wgpu::BufferAddress,
 				bytemuck::cast_slice(camera.as_ref()),
 			);
@@ -414,60 +414,60 @@ fn main() {
 			// 	(cubeSize.x * scale) as u32,
 			// 	(cubeSize.y * scale) as u32,
 			// )
-			(cameraBuffer, imgWidth, imgHeight)
+			(camera_buffer, img_width, img_height)
 		};
 
-		let frameSize = wgpu::Extent3d {
-			width: imgWidth,
-			height: imgHeight,
+		let frame_size = wgpu::Extent3d {
+			width: img_width,
+			height: img_height,
 			depth_or_array_layers: 1,
 		};
-		let frameFormat = wgpu::TextureFormat::Rgba8Unorm;
-		let frameTexture = device.create_texture(&wgpu::TextureDescriptor {
+		let frame_format = wgpu::TextureFormat::Rgba8Unorm;
+		let frame_texture = device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("frameTexture"),
-			size: frameSize,
+			size: frame_size,
 			mip_level_count: 1,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
-			format: frameFormat,
+			format: frame_format,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
 		});
-		let frameTextureMultisample = device.create_texture(&wgpu::TextureDescriptor {
+		let frame_texture_multisample = device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("frameTextureMultisample"),
-			size: frameSize,
+			size: frame_size,
 			mip_level_count: 1,
 			sample_count: 4,
 			dimension: wgpu::TextureDimension::D2,
-			format: frameFormat,
+			format: frame_format,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 		});
-		let frameDepthFormat = wgpu::TextureFormat::Depth24Plus;
-		let frameDepthTexture = device.create_texture(&wgpu::TextureDescriptor {
+		let frame_depth_format = wgpu::TextureFormat::Depth24Plus;
+		let frame_depth_texture = device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("frameDepthTexture"),
-			size: frameSize,
+			size: frame_size,
 			mip_level_count: 1,
 			sample_count: 4,
 			dimension: wgpu::TextureDimension::D2,
-			format: frameDepthFormat,
+			format: frame_depth_format,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 		});
-		let frameCopyBufferSize = ImgBufferSize::new(frameSize);
-		let frameCopyBuffer = device.create_buffer(&wgpu::BufferDescriptor {
+		let frame_copy_buffer_size = ImgBufferSize::new(frame_size);
+		let frame_copy_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: None,
 			mapped_at_creation: false,
-			size: (frameCopyBufferSize.bplPadded * frameCopyBufferSize.height)
+			size: (frame_copy_buffer_size.bpl_padded * frame_copy_buffer_size.height)
 				as wgpu::BufferAddress,
 			usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
 		});
-		let surfaceConfig = wgpu::SurfaceConfiguration {
+		let surface_config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-			format: frameFormat,
-			width: frameSize.width,
-			height: frameSize.height,
+			format: frame_format,
+			width: frame_size.width,
+			height: frame_size.height,
 			present_mode: wgpu::PresentMode::Immediate,
 		};
 
-		let (cartographer, blockTextureLayers) = Cartographer::load(&fs, &models, &device).unwrap();
+		let (cartographer, block_texture_layers) = Cartographer::load(&fs, &models, &device).unwrap();
 		#[cfg(false)]
 		{
 			let base = PathBuf::from("./aout/");
@@ -485,26 +485,26 @@ fn main() {
 				eprintln!("ok wrote {path:?}");
 			}
 		}
-		let blockTextureSize = wgpu::Extent3d {
-			width: blockTextureLayers[0].size.x,
-			height: blockTextureLayers[0].size.y,
-			depth_or_array_layers: blockTextureLayers.len() as u32,
+		let block_texture_size = wgpu::Extent3d {
+			width: block_texture_layers[0].size.x,
+			height: block_texture_layers[0].size.y,
+			depth_or_array_layers: block_texture_layers.len() as u32,
 		};
-		let blockTexture = device.create_texture(&wgpu::TextureDescriptor {
+		let block_texture = device.create_texture(&wgpu::TextureDescriptor {
 			label: None,
-			size: blockTextureSize,
+			size: block_texture_size,
 			mip_level_count: 1,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
 			format: wgpu::TextureFormat::Rgba8Unorm,
 			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
 		});
-		let blockTextureView = blockTexture.create_view(&wgpu::TextureViewDescriptor {
+		let block_texture_view = block_texture.create_view(&wgpu::TextureViewDescriptor {
 			dimension: Some(wgpu::TextureViewDimension::D2Array),
 			..Default::default()
 		});
-		for (i, layer) in blockTextureLayers.iter().enumerate() {
-			let mut dest = blockTexture.as_image_copy();
+		for (i, layer) in block_texture_layers.iter().enumerate() {
+			let mut dest = block_texture.as_image_copy();
 			dest.origin = wgpu::Origin3d {
 				x: 0,
 				y: 0,
@@ -522,11 +522,11 @@ fn main() {
 				},
 				wgpu::Extent3d {
 					depth_or_array_layers: 1,
-					..blockTextureSize
+					..block_texture_size
 				},
 			);
 		}
-		let blockTextureSampler = device.create_sampler(&wgpu::SamplerDescriptor {
+		let block_texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
 			address_mode_u: wgpu::AddressMode::ClampToEdge,
 			address_mode_v: wgpu::AddressMode::ClampToEdge,
 			address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -534,28 +534,28 @@ fn main() {
 			min_filter: wgpu::FilterMode::Linear,
 			..Default::default()
 		});
-		let atlasDiameters = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+		let atlas_diameters = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
 			usage: wgpu::BufferUsages::STORAGE,
 			contents: bytemuck::cast_slice(cartographer.element_diameters()),
 		});
 
 		let geometry = models.geometry_buffer(&cartographer);
-		let blockModelsBuffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+		let block_models_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
 			usage: wgpu::BufferUsages::VERTEX,
 			contents: bytemuck::cast_slice(&geometry.vertices),
 		});
 
 		// assuming worst case every block in section is composed of 10 submodels
-		const submodelsPerBlock: usize = 10;
-		const submodelsPerSection: usize =
-			ChunkPos::diameterBlocks.pow(3) as usize * submodelsPerBlock;
-		let indirectBuffers: Vec<_> = ChunkPos::sections
+		const SUBMODELS_PER_BLOCK: usize = 10;
+		const SUBMODELS_PER_SECTION: usize =
+			ChunkPos::DIAMETER_BLOCKS.pow(3) as usize * SUBMODELS_PER_BLOCK;
+		let indirect_buffers: Vec<_> = ChunkPos::SECTIONS
 			.map(|_| {
 				device.create_buffer(&wgpu::BufferDescriptor {
 					label: None,
-					size: (submodelsPerSection * size_of::<wgpu::util::DrawIndirect>())
+					size: (SUBMODELS_PER_SECTION * size_of::<wgpu::util::DrawIndirect>())
 						as wgpu::BufferAddress,
 					usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
 					mapped_at_creation: false,
@@ -590,7 +590,7 @@ fn main() {
 			label: None,
 			source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/main.wgsl"))),
 		});
-		let bindGroupLayout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: None,
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
@@ -633,31 +633,31 @@ fn main() {
 				},
 			],
 		});
-		let bindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: None,
-			layout: &bindGroupLayout,
+			layout: &bind_group_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: cameraBuffer.as_entire_binding(),
+					resource: camera_buffer.as_entire_binding(),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: atlasDiameters.as_entire_binding(),
+					resource: atlas_diameters.as_entire_binding(),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::TextureView(&blockTextureView),
+					resource: wgpu::BindingResource::TextureView(&block_texture_view),
 				},
 				wgpu::BindGroupEntry {
 					binding: 3,
-					resource: wgpu::BindingResource::Sampler(&blockTextureSampler),
+					resource: wgpu::BindingResource::Sampler(&block_texture_sampler),
 				},
 			],
 		});
-		let pipelineLayout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: None,
-			bind_group_layouts: &[&bindGroupLayout],
+			bind_group_layouts: &[&bind_group_layout],
 			push_constant_ranges: &[
 				wgpu::PushConstantRange {
 					range: 0 .. 4,
@@ -667,7 +667,7 @@ fn main() {
 		});
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: None,
-			layout: Some(&pipelineLayout),
+			layout: Some(&pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: &shader,
 				entry_point: "vsMain",
@@ -684,7 +684,7 @@ fn main() {
 				entry_point: "fsMain",
 				targets: &[Some(
 					wgpu::ColorTargetState {
-						format: frameFormat,
+						format: frame_format,
 						blend: Some(wgpu::BlendState {
 							color: wgpu::BlendComponent {
 								src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -721,19 +721,19 @@ fn main() {
 
 		let mut encoder = device.create_command_encoder(&Default::default());
 		{
-			let colorView = frameTexture.create_view(&Default::default());
-			let multisampleView = frameTextureMultisample.create_view(&Default::default());
-			let depthView = frameDepthTexture.create_view(&wgpu::TextureViewDescriptor {
+			let color_view = frame_texture.create_view(&Default::default());
+			let multisample_view = frame_texture_multisample.create_view(&Default::default());
+			let depth_view = frame_depth_texture.create_view(&wgpu::TextureViewDescriptor {
 				aspect: wgpu::TextureAspect::DepthOnly,
 				..Default::default()
 			});
 
-			let mut clearPass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+			let mut clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				label: None,
 				color_attachments: &[Some(
 					wgpu::RenderPassColorAttachment {
-						view: &multisampleView,
-						resolve_target: Some(&colorView),
+						view: &multisample_view,
+						resolve_target: Some(&color_view),
 						ops: wgpu::Operations {
 							load: wgpu::LoadOp::Clear(wgpu::Color {
 								r: 1.0,
@@ -746,7 +746,7 @@ fn main() {
 					},
 				)],
 				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-					view: &depthView,
+					view: &depth_view,
 					depth_ops: Some(wgpu::Operations {
 						load: wgpu::LoadOp::Clear(1.0),
 						store: true,
@@ -754,45 +754,45 @@ fn main() {
 					stencil_ops: None,
 				}),
 			});
-			drop(clearPass);
+			drop(clear_pass);
 
-			let mut indirectDraws = vec![];
-			for sectionY in chunk.sections() {
-				indirectDraws.clear();
-				let section = chunk.get_section(sectionY).unwrap();
+			let mut indirect_draws = vec![];
+			for section_y in chunk.sections() {
+				indirect_draws.clear();
+				let section = chunk.get_section(section_y).unwrap();
 				let section = section.borrow();
-				for blockPos in targetChunk.blocks_in_section(sectionY) {
-					let state = section.get_block(blockPos);
+				for block_pos in target_chunk.blocks_in_section(section_y) {
+					let state = section.get_block(block_pos);
 					let modelsets = statemap.get(&state).unwrap();
 					for set in modelsets {
 						// FIXME: weighting
-						let model = &set[blockpos_rng(blockPos).rem_euclid(set.len())];
-						let modelId = model.model;
-						if let Some((baseVertex, numVerts)) =
-							geometry.modelInfo.get(&modelId).copied()
+						let model = &set[blockpos_rng(block_pos).rem_euclid(set.len())];
+						let model_id = model.model;
+						if let Some((base_vertex, num_verts)) =
+							geometry.model_info.get(&model_id).copied()
 						{
-							let blockRel = blockPos.chunk_relative();
-							let blockIndex = blockRel.y * ChunkPos::diameterBlocks.pow(2) +
-								blockRel.z * ChunkPos::diameterBlocks +
-								blockRel.x;
+							let block_rel = block_pos.chunk_relative();
+							let block_index = block_rel.y * ChunkPos::DIAMETER_BLOCKS.pow(2) +
+								block_rel.z * ChunkPos::DIAMETER_BLOCKS +
+								block_rel.x;
 
 							// pack rotations into the unused upper 20 bits of instance id
 							// let rot = vec2(45f32.to_radians(), 0.0/* (14.5 * blockIndex as
 							// f32).to_radians() */);
 							let rot = vec2(
-								model.xRotation.unwrap_or(0.0).to_radians(),
-								model.yRotation.unwrap_or(0.0).to_radians(),
+								model.x_rotation.unwrap_or(0.0).to_radians(),
+								model.y_rotation.unwrap_or(0.0).to_radians(),
 							);
-							let rotTurns =
+							let rot_turns =
 								Vec2::from((rot / TAU).as_ref().map(|v| v.rem_euclid(1.0)));
-							let rotDiscrete = (rotTurns * 1024.0).as_uvec2();
-							let rotPacked = (rotDiscrete.y & 1023) << 10 | rotDiscrete.x & 1023;
+							let rot_discrete = (rot_turns * 1024.0).as_uvec2();
+							let rot_packed = (rot_discrete.y & 1023) << 10 | rot_discrete.x & 1023;
 
-							let instance = rotPacked << 12 | blockIndex as u32;
-							indirectDraws.extend(
+							let instance = rot_packed << 12 | block_index as u32;
+							indirect_draws.extend(
 								DrawIndirect {
-									base_vertex: baseVertex as u32,
-									vertex_count: numVerts as u32,
+									base_vertex: base_vertex as u32,
+									vertex_count: num_verts as u32,
 									base_instance: instance,
 									instance_count: 1,
 								}
@@ -802,16 +802,16 @@ fn main() {
 					}
 				}
 
-				let indirectBuffer =
-					&indirectBuffers[(sectionY - ChunkPos::sections.start()) as usize];
-				queue.write_buffer(indirectBuffer, 0, &indirectDraws);
+				let indirect_buffer =
+					&indirect_buffers[(section_y - ChunkPos::SECTIONS.start()) as usize];
+				queue.write_buffer(indirect_buffer, 0, &indirect_draws);
 				// queue.submit(None);
 				let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 					label: None,
 					color_attachments: &[Some(
 						wgpu::RenderPassColorAttachment {
-							view: &multisampleView,
-							resolve_target: Some(&colorView),
+							view: &multisample_view,
+							resolve_target: Some(&color_view),
 							ops: wgpu::Operations {
 								load: wgpu::LoadOp::Load,
 								store: true,
@@ -819,7 +819,7 @@ fn main() {
 						},
 					)],
 					depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-						view: &depthView,
+						view: &depth_view,
 						depth_ops: Some(wgpu::Operations {
 							load: wgpu::LoadOp::Load,
 							store: true,
@@ -828,18 +828,18 @@ fn main() {
 					}),
 				});
 				pass.set_pipeline(&pipeline);
-				pass.set_bind_group(0, &bindGroup, &[]);
-				pass.set_vertex_buffer(0, blockModelsBuffer.slice(..));
+				pass.set_bind_group(0, &bind_group, &[]);
+				pass.set_vertex_buffer(0, block_models_buffer.slice(..));
 				pass.set_push_constants(
 					wgpu::ShaderStages::VERTEX,
 					0,
-					bytemuck::bytes_of(&(sectionY as i32)),
+					bytemuck::bytes_of(&(section_y as i32)),
 				);
 				// pass.set_push_constants(wgpu::ShaderStages::VERTEX, 4, );
 				pass.multi_draw_indirect(
-					indirectBuffer,
+					indirect_buffer,
 					0,
-					(indirectDraws.len() / size_of::<DrawIndirect>()) as u32,
+					(indirect_draws.len() / size_of::<DrawIndirect>()) as u32,
 				);
 				// drop(pass);
 				// queue.submit(None);
@@ -847,38 +847,38 @@ fn main() {
 			// drop(pass);
 
 			encoder.copy_texture_to_buffer(
-				frameTexture.as_image_copy(),
+				frame_texture.as_image_copy(),
 				wgpu::ImageCopyBuffer {
-					buffer: &frameCopyBuffer,
+					buffer: &frame_copy_buffer,
 					layout: wgpu::ImageDataLayout {
 						offset: 0,
 						bytes_per_row: Some(
-							(frameCopyBufferSize.bplPadded as u32).try_into().unwrap(),
+							(frame_copy_buffer_size.bpl_padded as u32).try_into().unwrap(),
 						),
 						rows_per_image: None,
 					},
 				},
-				frameSize,
+				frame_size,
 			)
 		}
 		let submission = queue.submit(Some(encoder.finish()));
 
-		let slice = frameCopyBuffer.slice(..);
+		let slice = frame_copy_buffer.slice(..);
 		slice.map_async(wgpu::MapMode::Read, |_| {});
 		if !device.poll(wgpu::Maintain::WaitForSubmissionIndex(submission)) {
 			std::thread::sleep(std::time::Duration::from_secs_f32(1.5));
 		}
 
 		let padded = slice.get_mapped_range();
-		let mut pixels = vec![0u8; frameCopyBufferSize.bplUnpadded * frameCopyBufferSize.height];
+		let mut pixels = vec![0u8; frame_copy_buffer_size.bpl_unpadded * frame_copy_buffer_size.height];
 		let mut pixslice = &mut pixels[..];
-		for chunk in padded.chunks(frameCopyBufferSize.bplPadded) {
-			let len = frameCopyBufferSize.bplUnpadded;
+		for chunk in padded.chunks(frame_copy_buffer_size.bpl_padded) {
+			let len = frame_copy_buffer_size.bpl_unpadded;
 			pixslice[0 .. len].copy_from_slice(&chunk[0 .. len]);
 			pixslice = &mut pixslice[len ..];
 		}
 		drop(padded);
-		frameCopyBuffer.unmap();
+		frame_copy_buffer.unmap();
 
 		let file = std::fs::OpenOptions::new()
 			.write(true)
@@ -886,7 +886,7 @@ fn main() {
 			.truncate(true)
 			.open("out.png")
 			.unwrap();
-		let mut encoder = png::Encoder::new(file, frameSize.width, frameSize.height);
+		let mut encoder = png::Encoder::new(file, frame_size.width, frame_size.height);
 		encoder.set_color(png::ColorType::Rgba);
 		encoder.set_depth(png::BitDepth::Eight);
 		let mut writer = encoder.write_header().unwrap();
@@ -935,8 +935,8 @@ fn blockpos_rng(pos: BlockPos) -> usize {
 struct ImgBufferSize {
 	pub width: usize,
 	pub height: usize,
-	pub bplUnpadded: usize,
-	pub bplPadded: usize,
+	pub bpl_unpadded: usize,
+	pub bpl_padded: usize,
 }
 
 impl ImgBufferSize {
@@ -947,8 +947,8 @@ impl ImgBufferSize {
 		Self {
 			width: extent.width as usize,
 			height: extent.height as usize,
-			bplUnpadded: bpl as usize,
-			bplPadded: (bpl + padding) as usize,
+			bpl_unpadded: bpl as usize,
+			bpl_padded: (bpl + padding) as usize,
 		}
 	}
 }

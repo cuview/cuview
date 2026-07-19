@@ -44,44 +44,44 @@ impl Rect {
 #[derive(Debug)]
 struct Atlas {
 	id: u8,
-	texDiameter: usize,
+	tex_diameter: usize,
 	entries: Vec<ResourceLocation>,
 }
 
 impl Atlas {
-	fn new(id: u8, texDiameter: usize) -> Self {
+	fn new(id: u8, tex_diameter: usize) -> Self {
 		Self {
 			id,
-			texDiameter,
+			tex_diameter,
 			entries: vec![],
 		}
 	}
 
-	fn max_entries(&self, maxTextureDiameter: usize) -> usize {
-		let maxSize = UVec2::splat((maxTextureDiameter / self.texDiameter) as u32);
-		(maxSize.x * maxSize.y) as usize
+	fn max_entries(&self, max_texture_diameter: usize) -> usize {
+		let max_size = UVec2::splat((max_texture_diameter / self.tex_diameter) as u32);
+		(max_size.x * max_size.y) as usize
 	}
 
-	fn full(&self, maxTextureDiameter: usize) -> bool {
-		self.entries.len() >= self.max_entries(maxTextureDiameter)
+	fn full(&self, max_texture_diameter: usize) -> bool {
+		self.entries.len() >= self.max_entries(max_texture_diameter)
 	}
 
-	fn merged_size(&self, maxTextureDiameter: usize) -> UVec2 {
-		let width = (maxTextureDiameter / self.texDiameter) as u32;
+	fn merged_size(&self, max_texture_diameter: usize) -> UVec2 {
+		let width = (max_texture_diameter / self.tex_diameter) as u32;
 		let len = self.entries.len() as u32;
 		let y = len / width;
 		let x = if y == 0 { len % width } else { width };
-		let res = uvec2(x, y) * UVec2::splat(self.texDiameter as u32);
+		let res = uvec2(x, y) * UVec2::splat(self.tex_diameter as u32);
 		// powers of two required for mipmapping
 		let res = uvec2(res.x.next_power_of_two(), res.y.next_power_of_two());
-		assert!(res.x <= maxTextureDiameter as u32);
-		assert!(res.y <= maxTextureDiameter as u32);
+		assert!(res.x <= max_texture_diameter as u32);
+		assert!(res.y <= max_texture_diameter as u32);
 		res
 	}
 
-	fn origin(&self, maxTextureDiameter: usize, tid: u32) -> UVec2 {
-		let width = (maxTextureDiameter / self.texDiameter) as u32;
-		uvec2(tid % width, tid / width) * UVec2::splat(self.texDiameter as u32)
+	fn origin(&self, max_texture_diameter: usize, tid: u32) -> UVec2 {
+		let width = (max_texture_diameter / self.tex_diameter) as u32;
+		uvec2(tid % width, tid / width) * UVec2::splat(self.tex_diameter as u32)
 	}
 }
 
@@ -89,7 +89,7 @@ impl Atlas {
 pub struct Cartographer {
 	pub size: UVec2,
 	pub textures: HashMap<ResourceLocation, TextureId>,
-	elementDiameters: Vec<u32>,
+	element_diameters: Vec<u32>,
 }
 
 impl Cartographer {
@@ -100,7 +100,7 @@ impl Cartographer {
 	) -> anyhow::Result<(Self, Vec<Image>)> {
 		let limits = device.limits();
 		assert!(limits.max_texture_array_layers >= u8::MAX as u32);
-		let maxTextureDiameter = limits.max_texture_dimension_3d as usize;
+		let max_texture_diameter = limits.max_texture_dimension_3d as usize;
 		let mut images = HashMap::new();
 		let mut textures = HashMap::new();
 		let mut atlases: Vec<Atlas> = Vec::with_capacity(u8::MAX as usize);
@@ -109,7 +109,7 @@ impl Cartographer {
 			let diameter = img.size.x as usize;
 			let atlas = if let Some(atlas) = atlases
 				.iter_mut()
-				.filter(|a| a.texDiameter == diameter && !a.full(maxTextureDiameter))
+				.filter(|a| a.tex_diameter == diameter && !a.full(max_texture_diameter))
 				.next()
 			{
 				atlas
@@ -130,9 +130,9 @@ impl Cartographer {
 			images.insert(loc, img);
 		};
 
-		let missingTex = "cuview:missing_texture".into();
-		let missingTexImage = missing_texture(0xFF_FF00FF);
-		add_texture(missingTex, missingTexImage.clone());
+		let missing_tex = "cuview:missing_texture".into();
+		let missing_tex_image = missing_texture(0xFF_FF00FF);
+		add_texture(missing_tex, missing_tex_image.clone());
 
 		for loc in models
 			.all_block_textures()
@@ -141,7 +141,7 @@ impl Cartographer {
 		{
 			let path = loc.into_path(ResourceKind::Texture);
 			let mut image =
-				Image::from_jarfs(fs, &path).unwrap_or_else(|_| missingTexImage.clone());
+				Image::from_jarfs(fs, &path).unwrap_or_else(|_| missing_tex_image.clone());
 
 			let UVec2 {
 				x: width,
@@ -165,11 +165,11 @@ impl Cartographer {
 					image = image.crop(UVec2::splat(width));
 				} else {
 					path.set_extension("");
-					let srcModels: BTreeSet<_> =
+					let src_models: BTreeSet<_> =
 						models.models_using_texture(loc).into_iter().collect();
 					eprintln!(
 						"texture {path:?} is not square ({width}x{height}, used by models: \
-						 {srcModels:?})"
+						 {src_models:?})"
 					);
 
 					// TODO: properly handling this will require more sophisticated texture packing
@@ -182,30 +182,30 @@ impl Cartographer {
 			add_texture(loc, image);
 		}
 
-		let diameters: Vec<_> = atlases.iter().map(|a| a.texDiameter as u32).collect();
-		let layerSize = atlases
+		let diameters: Vec<_> = atlases.iter().map(|a| a.tex_diameter as u32).collect();
+		let layer_size = atlases
 			.iter()
-			.map(|a| a.merged_size(maxTextureDiameter))
+			.map(|a| a.merged_size(max_texture_diameter))
 			.fold(UVec2::splat(0), |res, v| {
 				uvec2(res.x.max(v.x), res.y.max(v.y))
 			});
 		let mut layers = Vec::with_capacity(atlases.len());
 		for (aid, atlas) in atlases.iter().enumerate() {
-			let mut layer = Image::empty(layerSize);
-			let destSize = layer.size;
+			let mut layer = Image::empty(layer_size);
+			let dest_size = layer.size;
 			for (tid, tex) in atlas.entries.iter().copied().enumerate() {
-				let srcImage = images.get(&tex).unwrap();
-				let srcSize = srcImage.size;
-				let origin = atlas.origin(maxTextureDiameter, tid as u32);
-				layer.blit_from(srcImage, origin, None);
+				let src_image = images.get(&tex).unwrap();
+				let src_size = src_image.size;
+				let origin = atlas.origin(max_texture_diameter, tid as u32);
+				layer.blit_from(src_image, origin, None);
 			}
 			layers.push(layer);
 		}
 
 		let new = Self {
-			size: layerSize,
+			size: layer_size,
 			textures,
-			elementDiameters: diameters,
+			element_diameters: diameters,
 		};
 		Ok((new, layers))
 	}
@@ -224,20 +224,20 @@ impl Cartographer {
 	}
 
 	pub fn layers(&self) -> usize {
-		self.elementDiameters.len()
+		self.element_diameters.len()
 	}
 
 	pub fn element_diameters(&self) -> &[u32] {
-		&self.elementDiameters
+		&self.element_diameters
 	}
 }
 
 fn missing_texture(color: u32) -> Image {
-	const diameter: u32 = 16;
-	let color = Image::solid_color(UVec2::splat(diameter / 2), color);
-	let mut img = Image::empty(UVec2::splat(diameter));
+	const DIAMETER: u32 = 16;
+	let color = Image::solid_color(UVec2::splat(DIAMETER / 2), color);
+	let mut img = Image::empty(UVec2::splat(DIAMETER));
 	img.blit_from(&color, UVec2::ZERO, None);
-	img.blit_from(&color, UVec2::splat(diameter / 2), None);
+	img.blit_from(&color, UVec2::splat(DIAMETER / 2), None);
 	img
 }
 
@@ -278,19 +278,19 @@ impl Image {
 		});
 
 		let mut reader = decoder.read_info()?;
-		let numPixels = reader.output_buffer_size().expect("output image is too large to fit into RAM");
-		let mut srcPixels = vec![0u8; numPixels];
-		let info = reader.next_frame(&mut srcPixels).unwrap();
+		let num_pixels = reader.output_buffer_size().expect("output image is too large to fit into RAM");
+		let mut src_pixels = vec![0u8; num_pixels];
+		let info = reader.next_frame(&mut src_pixels).unwrap();
 		assert_eq!(info.bit_depth, png::BitDepth::Eight);
 
 		let (width, height) = (info.width as usize, info.height as usize);
 		let pixels = match info.color_type {
 			png::ColorType::Rgba => {
 				// cannot `cast_vec` due to misaligned `Vec<u8>`s :\
-				bytemuck::cast_slice(&srcPixels).to_vec()
+				bytemuck::cast_slice(&src_pixels).to_vec()
 			},
 			png::ColorType::Rgb => {
-				let chunks = srcPixels.chunks_exact(3);
+				let chunks = src_pixels.chunks_exact(3);
 				assert!(chunks.remainder().is_empty());
 				chunks
 					.map(|chunk| {
@@ -301,8 +301,8 @@ impl Image {
 					.collect()
 			},
 			png::ColorType::Grayscale => {
-				assert_eq!(srcPixels.len(), width * height);
-				srcPixels
+				assert_eq!(src_pixels.len(), width * height);
+				src_pixels
 					.into_iter()
 					.map(|v| {
 						let v = v as u32;
@@ -311,7 +311,7 @@ impl Image {
 					.collect()
 			},
 			png::ColorType::GrayscaleAlpha => {
-				let chunks = srcPixels.chunks_exact(2);
+				let chunks = src_pixels.chunks_exact(2);
 				assert!(chunks.remainder().is_empty());
 				chunks
 					.map(|chunk| {
@@ -343,22 +343,22 @@ impl Image {
 		Ok(())
 	}
 
-	pub fn blit_from(&mut self, src: &Self, destOrigin: UVec2, srcSize: Option<UVec2>) {
-		let size = srcSize.unwrap_or(src.size);
+	pub fn blit_from(&mut self, src: &Self, dest_origin: UVec2, src_size: Option<UVec2>) {
+		let size = src_size.unwrap_or(src.size);
 		assert!(size.x <= src.size.x && size.y <= src.size.y);
-		assert!(destOrigin.x <= self.size.x - size.x);
-		assert!(destOrigin.y <= self.size.y - size.y);
+		assert!(dest_origin.x <= self.size.x - size.x);
+		assert!(dest_origin.y <= self.size.y - size.y);
 		for sy in 0 .. size.y {
 			fn index(pos: UVec2, width: u32) -> usize {
 				(pos.y * width + pos.x) as usize
 			}
 
-			let srcSlice =
+			let src_slice =
 				&src.pixels[index(uvec2(0, sy), size.x) .. index(uvec2(0, sy + 1), size.x)];
-			let dy = destOrigin.y + sy;
-			let destSlice = &mut self.pixels[index(uvec2(destOrigin.x, dy), self.size.x) ..
-				index(uvec2(destOrigin.x + size.x, dy), self.size.x)];
-			destSlice.copy_from_slice(srcSlice);
+			let dy = dest_origin.y + sy;
+			let dest_slice = &mut self.pixels[index(uvec2(dest_origin.x, dy), self.size.x) ..
+				index(uvec2(dest_origin.x + size.x, dy), self.size.x)];
+			dest_slice.copy_from_slice(src_slice);
 		}
 	}
 
@@ -433,10 +433,10 @@ fn test_image() {
 	assert_eq!(dest.pixels, [0xFFFF_FFFF, 0, 0, 0]);
 
 	for height in 1u32 .. 6 {
-		const width: u32 = 2;
-		let mut pixels: Vec<_> = (1 ..= width * height).collect();
+		const WIDTH: u32 = 2;
+		let mut pixels: Vec<_> = (1 ..= WIDTH * height).collect();
 		let mut img = Image {
-			size: uvec2(width, height),
+			size: uvec2(WIDTH, height),
 			pixels: pixels.clone(),
 		};
 		img.flip_y();

@@ -13,10 +13,10 @@ use crate::JsonValue;
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
 pub struct IString(&'static str);
 
-static internedStrings: LazyLock<RwLock<HashSet<&'static str>>> = LazyLock::new(Default::default);
+static INTERNED_STRINGS: LazyLock<RwLock<HashSet<&'static str>>> = LazyLock::new(Default::default);
 
 thread_local! {
-	static lowercaseBuffer: RefCell<String> = RefCell::new(String::new());
+	static LOWERCASE_BUFFER: RefCell<String> = RefCell::new(String::new());
 }
 
 impl IString {
@@ -25,7 +25,7 @@ impl IString {
 	}
 
 	pub fn lowercased(str: &str) -> Self {
-		lowercaseBuffer.with(|cell| {
+		LOWERCASE_BUFFER.with(|cell| {
 			let mut buffer = cell.borrow_mut();
 			buffer.clear();
 			buffer.push_str(str);
@@ -35,7 +35,7 @@ impl IString {
 	}
 
 	fn get_or_insert(str: StrSrc) -> Self {
-		let set = internedStrings
+		let set = INTERNED_STRINGS
 			.read()
 			.expect("failed to lock interned strings cache for read");
 		if let Some(&ptr) = set.get(str.borrow()) {
@@ -43,7 +43,7 @@ impl IString {
 		}
 
 		drop(set);
-		let mut set = internedStrings
+		let mut set = INTERNED_STRINGS
 			.write()
 			.expect("failed to lock interned strings cache for write");
 		let new = str.intern();

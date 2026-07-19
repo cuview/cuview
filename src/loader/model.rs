@@ -128,10 +128,10 @@ pub struct BlockStateModel {
 	pub model: ResourceLocation,
 
 	#[serde(rename = "x")]
-	pub xRotation: Option<f32>,
+	pub x_rotation: Option<f32>,
 
 	#[serde(rename = "y")]
-	pub yRotation: Option<f32>,
+	pub y_rotation: Option<f32>,
 
 	pub uvlock: Option<bool>,
 
@@ -201,7 +201,7 @@ pub struct Face {
 	pub cullface: Option<Direction>,
 
 	#[serde(rename = "rotation")]
-	pub textureRotation: Option<i32>,
+	pub texture_rotation: Option<i32>,
 
 	pub tintindex: Option<i32>,
 }

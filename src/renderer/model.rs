@@ -264,7 +264,7 @@ pub struct Vertex {
 #[derive(Clone, Copy, Zeroable, Pod)]
 pub struct FullVertex {
 	pub vert: Vertex,
-	pub texId: u32,
+	pub tex_id: u32,
 }
 
 impl Deref for FullVertex {
@@ -301,19 +301,19 @@ pub struct Face {
 pub struct Model {
 	pub id: ResourceLocation,
 	pub parent: Option<ResourceLocation>,
-	pub textureSlots: BTreeMap<IString, Texture>,
+	pub texture_slots: BTreeMap<IString, Texture>,
 	pub faces: Vec<Face>,
 }
 
 impl Model {
 	pub fn texture(&self, slot: &str) -> ResourceLocation {
 		let res = (|| {
-			let mut tex = self.textureSlots.get(slot)?;
+			let mut tex = self.texture_slots.get(slot)?;
 			for _ in 0 .. 100 {
 				match tex {
 					Texture::Asset(loc) => return Some(*loc),
 					Texture::Slot(name) => {
-						tex = self.textureSlots.get(name)?;
+						tex = self.texture_slots.get(name)?;
 					},
 				}
 			}
@@ -344,7 +344,7 @@ impl Model {
 pub struct ModelCache(BTreeMap<ResourceLocation, Model>);
 
 impl ModelCache {
-	const placeholderModelIds: &'static [&'static str] = &[
+	const PLACEHOLDER_MODEL_IDS: &'static [&'static str] = &[
 		"cuview:missing_model",
 		"block/entity",
 		"builtin/entity",
@@ -379,7 +379,7 @@ impl ModelCache {
 		}
 
 		// load any inherited models that lie outside the block models directory
-		let placeholders: Vec<ResourceLocation> = Self::placeholderModelIds
+		let placeholders: Vec<ResourceLocation> = Self::PLACEHOLDER_MODEL_IDS
 			.iter()
 			.copied()
 			.map(Into::into)
@@ -392,7 +392,7 @@ impl ModelCache {
 				})
 			})
 			.collect();
-		let mut newParents = HashSet::new();
+		let mut new_parents = HashSet::new();
 		loop {
 			if parents.len() == 0 {
 				break;
@@ -401,15 +401,15 @@ impl ModelCache {
 			for &parent in &parents {
 				let path = parent.into_path(ResourceKind::Model);
 				let (_, model) = parse_model(&path);
-				if let Some(newParent) = model.parent {
-					if !jsons.contains_key(&newParent) && !placeholders.contains(&newParent) {
-						newParents.insert(newParent);
+				if let Some(new_parent) = model.parent {
+					if !jsons.contains_key(&new_parent) && !placeholders.contains(&new_parent) {
+						new_parents.insert(new_parent);
 					}
 				}
 				jsons.insert(parent, model);
 			}
 			parents.clear();
-			std::mem::swap(&mut parents, &mut newParents);
+			std::mem::swap(&mut parents, &mut new_parents);
 		}
 
 		let mut cache = Self(BTreeMap::new());
@@ -420,25 +420,25 @@ impl ModelCache {
 				Model {
 					id,
 					parent: None,
-					textureSlots: BTreeMap::new(),
+					texture_slots: BTreeMap::new(),
 					faces: vec![],
 				},
 			);
 		}
 
 		let mut remaining: HashSet<_> = jsons.keys().cloned().collect();
-		let mut newModels = Vec::with_capacity(remaining.len());
-		let mut remainingLen = usize::MAX;
+		let mut new_models = Vec::with_capacity(remaining.len());
+		let mut remaining_len = usize::MAX;
 		loop {
-			let newRemainingLen = remaining.len();
-			if newRemainingLen == 0 {
+			let new_remaining_len = remaining.len();
+			if new_remaining_len == 0 {
 				break;
 			}
-			if remainingLen == newRemainingLen {
+			if remaining_len == new_remaining_len {
 				let remaining: BTreeSet<_> = remaining.into_iter().collect();
 				panic!("Failed to load any remaining models: {remaining:?}");
 			}
-			remainingLen = newRemainingLen;
+			remaining_len = new_remaining_len;
 
 			for loc in remaining.iter().cloned().filter(|loc| {
 				let json = jsons.get(loc).unwrap();
@@ -453,12 +453,12 @@ impl ModelCache {
 				let json = jsons.get(&loc).unwrap();
 				let parent = json.parent.map(|p| cache.get(&p)).flatten();
 
-				let mut textureSlots = parent
-					.map(|p| p.textureSlots.clone())
+				let mut texture_slots = parent
+					.map(|p| p.texture_slots.clone())
 					.unwrap_or_else(|| BTreeMap::new());
 				if let Some(textures) = &json.textures {
 					for (k, v) in textures {
-						textureSlots.insert(k.clone(), v.as_str().into());
+						texture_slots.insert(k.clone(), v.as_str().into());
 					}
 				}
 
@@ -508,18 +508,18 @@ impl ModelCache {
 					faces = parent.map(|v| v.faces.clone()).unwrap_or_else(|| vec![]);
 				}
 
-				newModels.push((
+				new_models.push((
 					loc,
 					Model {
 						id: loc,
 						parent: json.parent,
-						textureSlots,
+						texture_slots,
 						faces,
 					},
 				));
 			}
 
-			for (loc, model) in newModels.drain(..) {
+			for (loc, model) in new_models.drain(..) {
 				cache.insert(loc, model);
 				remaining.remove(&loc);
 			}
@@ -529,12 +529,12 @@ impl ModelCache {
 
 	pub fn models_using_texture(
 		&self,
-		targetTexure: ResourceLocation,
+		target_texure: ResourceLocation,
 	) -> HashSet<ResourceLocation> {
 		self.values()
-			.flat_map(|m| m.textureSlots.values().map(|t| (m.id, t)))
-			.filter_map(|(modelId, tex)| match tex {
-				Texture::Asset(id) => (*id == targetTexure).then_some(modelId),
+			.flat_map(|m| m.texture_slots.values().map(|t| (m.id, t)))
+			.filter_map(|(model_id, tex)| match tex {
+				Texture::Asset(id) => (*id == target_texure).then_some(model_id),
 				_ => None,
 			})
 			.collect()
@@ -542,7 +542,7 @@ impl ModelCache {
 
 	pub fn all_block_textures(&self) -> HashSet<ResourceLocation> {
 		self.values()
-			.flat_map(|m| m.textureSlots.values())
+			.flat_map(|m| m.texture_slots.values())
 			.filter_map(|t| match t {
 				Texture::Slot(_) => None,
 				Texture::Asset(id) => Some(*id),
@@ -552,19 +552,19 @@ impl ModelCache {
 
 	pub fn geometry_buffer(&self, cartographer: &Cartographer) -> GeometryBuffer {
 		let mut vertices = vec![];
-		let mut modelInfo = HashMap::new();
+		let mut model_info = HashMap::new();
 
-		let mut vertexId = 0;
+		let mut vertex_id = 0;
 		for (&id, model) in self.0.iter() {
-			let baseVertex = vertexId;
-			let numVertices = model.faces.len() * 6;
-			vertexId += numVertices;
+			let base_vertex = vertex_id;
+			let num_vertices = model.faces.len() * 6;
+			vertex_id += num_vertices;
 			vertices.extend(model.faces.iter().flat_map(|face| {
 				let slot = match face.texture {
 					Texture::Asset(_) => panic!(),
 					Texture::Slot(name) => name.as_str(),
 				};
-				let texId = cartographer
+				let tex_id = cartographer
 					.id_for_texture(model.texture(slot))
 					.unwrap_or_else(|| {
 						cartographer
@@ -576,36 +576,36 @@ impl ModelCache {
 					// expand triangle strip to pair of tris with slot
 					FullVertex {
 						vert: face.verts[0],
-						texId,
+						tex_id,
 					},
 					FullVertex {
 						vert: face.verts[1],
-						texId,
+						tex_id,
 					},
 					FullVertex {
 						vert: face.verts[2],
-						texId,
+						tex_id,
 					},
 					FullVertex {
 						vert: face.verts[1],
-						texId,
+						tex_id,
 					},
 					FullVertex {
 						vert: face.verts[3],
-						texId,
+						tex_id,
 					},
 					FullVertex {
 						vert: face.verts[2],
-						texId,
+						tex_id,
 					},
 				]
 			}));
-			modelInfo.insert(id, (baseVertex, numVertices));
+			model_info.insert(id, (base_vertex, num_vertices));
 		}
 
 		GeometryBuffer {
 			vertices,
-			modelInfo,
+			model_info,
 		}
 	}
 }
@@ -627,7 +627,7 @@ impl DerefMut for ModelCache {
 pub struct GeometryBuffer {
 	pub vertices: Vec<FullVertex>,
 
-	pub modelInfo: HashMap<ResourceLocation, (usize, usize)>,
+	pub model_info: HashMap<ResourceLocation, (usize, usize)>,
 }
 
 /**
@@ -640,7 +640,7 @@ pub fn models_for_states(
 	fs: &JarFS,
 	blockstates: &BlockStateCache,
 ) -> HashMap<BlockState, Vec<Vec<BlockStateModel>>> {
-	let mut blockstateJsons = HashMap::new();
+	let mut blockstate_jsons = HashMap::new();
 	for block in blockstates.blocks() {
 		let path = block.into_path(ResourceKind::BlockState);
 		let json = fs.read_text(&path);
@@ -650,27 +650,27 @@ pub fn models_for_states(
 		}
 		let json: JsonBlockState = serde_json::from_str(&json.unwrap())
 			.expect(&format!("Malformed blockstate json for {block}"));
-		blockstateJsons.insert(block, json);
+		blockstate_jsons.insert(block, json);
 	}
 
 	let missing = BlockStateModel {
 		model: "cuview:missing".into(),
-		xRotation: None,
-		yRotation: None,
+		x_rotation: None,
+		y_rotation: None,
 		uvlock: None,
 		weight: None,
 	};
-	let mut modelsForState = HashMap::new();
+	let mut models_for_state = HashMap::new();
 	for state in blockstates.states() {
 		let block = state.block_name();
 		let mut models = vec![];
-		let json = blockstateJsons.get(&block);
+		let json = blockstate_jsons.get(&block);
 
 		if let Some(json) = json {
 			match json {
 				JsonBlockState::Variants(map) => {
 					let missing = OneOrMany::One(missing);
-					let stateModels = (|| {
+					let state_models = (|| {
 						if let Some(xs) = map.get("") {
 							assert!(
 								map.len() == 1,
@@ -679,21 +679,21 @@ pub fn models_for_states(
 							);
 							xs
 						} else {
-							for (stateStr, stateModels) in map {
-								let partialState = BlockStateBuilder::from_variants_model(
+							for (state_str, state_models) in map {
+								let partial_state = BlockStateBuilder::from_variants_model(
 									block,
-									stateStr.as_str(),
+									state_str.as_str(),
 								);
-								if partialState.keys().all(|key| {
-									state.get_property(key) == partialState.get_property(key)
+								if partial_state.keys().all(|key| {
+									state.get_property(key) == partial_state.get_property(key)
 								}) {
-									return stateModels;
+									return state_models;
 								}
 							}
 							&missing
 						}
 					})();
-					models.push(stateModels.iter().copied().collect());
+					models.push(state_models.iter().copied().collect());
 				},
 				JsonBlockState::Multipart(parts) => {
 					let case_matches = |case: &MultipartCase| -> bool {
@@ -744,41 +744,41 @@ pub fn models_for_states(
 			}
 			models.push(vec![missing]);
 		}
-		modelsForState.insert(state, models);
+		models_for_state.insert(state, models);
 	}
 
-	modelsForState
+	models_for_state
 }
 
-pub fn export_wavefront(models: &[(&str, &Model)], mtlFilename: &str) -> (String, String) {
-	const palette: &[u32] = &[
+pub fn export_wavefront(models: &[(&str, &Model)], mtl_filename: &str) -> (String, String) {
+	const PALETTE: &[u32] = &[
 		0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x7FFF00, 0xFF7F00,
 		0x007FFF, 0x00FF7F, 0x7F00FF, 0xFF007F,
 	];
 
 	let mut obj = String::new();
 	let mut mtl = String::new();
-	obj.write_fmt(format_args!("mtllib {mtlFilename}\n\n"))
+	obj.write_fmt(format_args!("mtllib {mtl_filename}\n\n"))
 		.unwrap();
 
-	let mut vertIndex = 1;
-	let mut texIndex = 0;
-	let mut slotCounts: HashMap<IString, usize> = HashMap::new();
-	for (index, (modelName, model)) in models.iter().copied().enumerate() {
+	let mut vert_index = 1;
+	let mut tex_index = 0;
+	let mut slot_counts: HashMap<IString, usize> = HashMap::new();
+	for (index, (model_name, model)) in models.iter().copied().enumerate() {
 		if index > 0 {
 			obj.write_str("\n").unwrap();
 		}
-		obj.write_fmt(format_args!("o {modelName}\n")).unwrap();
+		obj.write_fmt(format_args!("o {model_name}\n")).unwrap();
 
 		let mut texgroups = HashMap::new();
 		for face in model.faces.iter() {
-			let texName: String = match face.texture {
+			let tex_name: String = match face.texture {
 				Texture::Slot(name) => model.texture(&name),
 				Texture::Asset(loc) => loc,
 			}
 			.into();
 			let list = texgroups
-				.entry(texName)
+				.entry(tex_name)
 				.or_insert_with(|| Vec::with_capacity(64));
 			list.push(face);
 		}
@@ -792,16 +792,16 @@ pub fn export_wavefront(models: &[(&str, &Model)], mtlFilename: &str) -> (String
 				})
 				.collect::<String>()
 				.into();
-			let texId = *slotCounts
+			let tex_id = *slot_counts
 				.entry(texture)
 				.and_modify(|v| *v += 1)
 				.or_insert(0);
-			mtl.write_fmt(format_args!("newmtl {texture}{texId}\n"))
+			mtl.write_fmt(format_args!("newmtl {texture}{tex_id}\n"))
 				.unwrap();
 			mtl.write_fmt(format_args!("d 1\nNs 0\n")).unwrap();
 
-			let color = palette[texIndex % palette.len()];
-			texIndex += 1;
+			let color = PALETTE[tex_index % PALETTE.len()];
+			tex_index += 1;
 			let (r, g, b) = (
 				((color & 0xFF0000) >> 16) as f32 / 255.0,
 				((color & 0x00FF00) >> 8) as f32 / 255.0,
@@ -812,17 +812,17 @@ pub fn export_wavefront(models: &[(&str, &Model)], mtlFilename: &str) -> (String
 			// TODO: export textures
 			// mtl.write_fmt(format_args!("map_Kd {texture}.png\n")).unwrap();
 
-			obj.write_fmt(format_args!("usemtl {texture}{texId}\n"))
+			obj.write_fmt(format_args!("usemtl {texture}{tex_id}\n"))
 				.unwrap();
 			for face in faces {
-				let baseVert = vertIndex;
-				vertIndex += 4;
+				let base_vert = vert_index;
+				vert_index += 4;
 				obj.write_fmt(format_args!(
 					"f {0}/{0} {1}/{1} {2}/{2}\nf {1}/{1} {3}/{3} {2}/{2}\n",
-					baseVert + 0,
-					baseVert + 1,
-					baseVert + 2,
-					baseVert + 3
+					base_vert + 0,
+					base_vert + 1,
+					base_vert + 2,
+					base_vert + 3
 				))
 				.unwrap();
 				for vert in face.verts {

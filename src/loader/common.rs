@@ -10,59 +10,59 @@ use crate::types::{ChunkPos, RegionPos};
 pub struct AnvilRegion {
 	pos: RegionPos,
 	bytes: Vec<u8>,
-	chunkOffsets: [(usize, usize); 1024],
+	chunk_offsets: [(usize, usize); 1024],
 }
 
 impl AnvilRegion {
-	pub fn new(regionDir: impl AsRef<Path>, pos: RegionPos) -> Result<Self, std::io::Error> {
-		let regionFile = regionDir
+	pub fn new(region_dir: impl AsRef<Path>, pos: RegionPos) -> Result<Self, std::io::Error> {
+		let region_file = region_dir
 			.as_ref()
 			.join(format!("r.{}.{}.mca", pos.x, pos.z));
-		let regionFileName = regionFile.display();
-		let mut file = std::fs::File::open(&regionFile)?;
+		let region_file_name = region_file.display();
+		let mut file = std::fs::File::open(&region_file)?;
 
-		let fileLen = file.metadata()?.len() as usize;
-		if fileLen & 0xFFF != 0 {
+		let file_len = file.metadata()?.len() as usize;
+		if file_len & 0xFFF != 0 {
 			return Err(io::Error::new(
 				io::ErrorKind::Other,
-				format!("{regionFileName}: file size is not a multiple of 4KiB"),
+				format!("{region_file_name}: file size is not a multiple of 4KiB"),
 			));
 		}
 
-		let mut bytes = Vec::with_capacity(fileLen);
+		let mut bytes = Vec::with_capacity(file_len);
 		file.read_to_end(&mut bytes)?;
 
-		let mut chunkOffsets = [(0usize, 0usize); 1024];
-		for index in 0 .. chunkOffsets.len() {
+		let mut chunk_offsets = [(0usize, 0usize); 1024];
+		for index in 0 .. chunk_offsets.len() {
 			let packed = u32::from_be_bytes(bytes[index * 4 .. index * 4 + 4].try_into().unwrap());
 			let offset = (packed & 0xFF_FF_FF_00) >> 8;
 			let len = packed & 0xFF;
-			chunkOffsets[index] = ((offset as usize) * 4096, (len as usize) * 4096);
+			chunk_offsets[index] = ((offset as usize) * 4096, (len as usize) * 4096);
 		}
 
 		Ok(Self {
 			pos,
 			bytes,
-			chunkOffsets,
+			chunk_offsets,
 		})
 	}
 
 	fn get_offsets(&self, pos: ChunkPos) -> (usize, usize) {
 		let pos = pos.region_relative();
-		self.chunkOffsets[(pos.z * RegionPos::diameterChunks + pos.x) as usize]
+		self.chunk_offsets[(pos.z * RegionPos::DIAMETER_CHUNKS + pos.x) as usize]
 	}
 
 	fn get_compressed_chunk(&self, pos: ChunkPos) -> &[u8] {
-		let regionPos = self.pos;
+		let region_pos = self.pos;
 		debug_assert!(
 			!self.is_empty(pos),
-			"Attempt to load compressed chunk at {pos:?} but it is empty (region {regionPos:?})"
+			"Attempt to load compressed chunk at {pos:?} but it is empty (region {region_pos:?})"
 		);
-		let otherRegion = RegionPos::from(pos);
+		let other_region = RegionPos::from(pos);
 		debug_assert!(
-			otherRegion == self.pos,
+			other_region == self.pos,
 			"Attempt to get compressed chunk {pos:?} belonging to different region: belongs to \
-			 {otherRegion:?} but is being requested from {regionPos:?}"
+			 {other_region:?} but is being requested from {region_pos:?}"
 		);
 
 		let (offset, len) = self.get_offsets(pos);
@@ -74,14 +74,14 @@ impl AnvilRegion {
 	}
 
 	pub fn load_chunk<T: DeserializeOwned>(&self, pos: ChunkPos) -> Result<T, nbt::Error> {
-		let regionPos = self.pos;
+		let region_pos = self.pos;
 		let raw = self.get_compressed_chunk(pos);
 		assert!(raw.len() > 5);
 
 		let len = u32::from_be_bytes(raw[0 .. 4].try_into().unwrap());
 		assert!(
 			len as usize <= raw.len() - 4,
-			"Raw chunk {pos:?} (region {regionPos:?}) has bad length in header"
+			"Raw chunk {pos:?} (region {region_pos:?}) has bad length in header"
 		);
 
 		let compression = raw[4];
@@ -89,7 +89,7 @@ impl AnvilRegion {
 			1 => nbt::from_gzip_reader(&raw[5 ..]),
 			2 => nbt::from_zlib_reader(&raw[5 ..]),
 			_ => panic!(
-				"Raw chunk {pos:?} (region {regionPos:?}) has bad compression scheme in header"
+				"Raw chunk {pos:?} (region {region_pos:?}) has bad compression scheme in header"
 			),
 		}
 	}
@@ -98,29 +98,29 @@ impl AnvilRegion {
 pub fn biterator(bits: usize, mut words: &[u64]) -> impl '_ + Iterator<Item = u32> {
 	let bits = bits as u32;
 	let mask = (1 << bits) - 1;
-	let mut currentWord = words[0];
+	let mut current_word = words[0];
 	words = &words[1 ..];
-	let mut bitsRemaining = u64::BITS;
+	let mut bits_remaining = u64::BITS;
 	std::iter::from_fn(move || {
-		if bitsRemaining == 0 && words.len() == 0 {
+		if bits_remaining == 0 && words.len() == 0 {
 			None
 		} else {
-			if bitsRemaining == 0 {
-				currentWord = words[0];
+			if bits_remaining == 0 {
+				current_word = words[0];
 				words = &words[1 ..];
-				bitsRemaining = u64::BITS;
+				bits_remaining = u64::BITS;
 			}
 
-			let elem = currentWord & mask;
-			currentWord >>= bits;
-			if let Some(v) = bitsRemaining.checked_sub(bits) {
-				bitsRemaining = v;
+			let elem = current_word & mask;
+			current_word >>= bits;
+			if let Some(v) = bits_remaining.checked_sub(bits) {
+				bits_remaining = v;
 				// TODO: <=1.15 wraps entries across words
-				if bitsRemaining < bits {
-					bitsRemaining = 0;
+				if bits_remaining < bits {
+					bits_remaining = 0;
 				}
 			} else {
-				bitsRemaining = 0;
+				bits_remaining = 0;
 			}
 			Some(elem as u32)
 		}

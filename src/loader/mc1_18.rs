@@ -18,19 +18,19 @@ impl WorldLoader for Loader {
 		pos: ChunkPos,
 		anvil: std::sync::Arc<AnvilRegion>,
 	) {
-		let rawChunk: Chunk = anvil.load_chunk(pos).unwrap();
-		for rawSection in &rawChunk.sections {
-			if rawSection.blocks.is_none() {
+		let raw_chunk: Chunk = anvil.load_chunk(pos).unwrap();
+		for raw_section in &raw_chunk.sections {
+			if raw_section.blocks.is_none() {
 				continue;
 			}
 
-			let blockInfo = rawSection.blocks.as_ref().unwrap();
-			let palette: world::Palette = blockInfo
+			let block_info = raw_section.blocks.as_ref().unwrap();
+			let palette: world::Palette = block_info
 				.palette
 				.iter()
-				.map(|rawBS| {
-					let mut state = BlockStateBuilder::new(rawBS.name.as_str().into());
-					if let Some(props) = rawBS.properties.as_ref() {
+				.map(|raw_bs| {
+					let mut state = BlockStateBuilder::new(raw_bs.name.as_str().into());
+					if let Some(props) = raw_bs.properties.as_ref() {
 						for (k, v) in props {
 							state.set_property(k.as_str().into(), v.as_str().into());
 						}
@@ -38,13 +38,13 @@ impl WorldLoader for Loader {
 					state.build()
 				})
 				.collect();
-			let paletteBits = palette.bits();
+			let palette_bits = palette.bits();
 
-			let section = chunk.borrow_mut().new_section(rawSection.y, palette);
-			if let Some(blocks) = &blockInfo.blockArray {
+			let section = chunk.borrow_mut().new_section(raw_section.y, palette);
+			if let Some(blocks) = &block_info.blocks_array {
 				section
 					.borrow_mut()
-					.fill_from_iter(biterator(paletteBits, bytemuck::cast_slice(blocks)));
+					.fill_from_iter(biterator(palette_bits, bytemuck::cast_slice(blocks)));
 			} else {
 				let it = std::iter::once(0).cycle().take(4096);
 				section.borrow_mut().fill_from_iter(it);
@@ -61,30 +61,30 @@ pub fn make_loader(root: &Path) -> Box<dyn WorldLoader> {
 #[serde(rename_all = "PascalCase")]
 pub struct LevelDat {
 	#[serde(rename = "Data")]
-	pub vanillaData: LevelDatVanillaData,
+	pub vanilla_data: LevelDatVanillaData,
 
 	#[serde(rename = "fml")]
-	pub forgeData: Option<LevelDatForgeData>,
+	pub forge_data: Option<LevelDatForgeData>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LevelDatVanillaData {
-	pub levelName: String,
+	pub level_name: String,
 	pub time: i64,
 
-	pub spawnX: i32,
-	pub spawnY: i32,
-	pub spawnZ: i32,
+	pub spawn_x: i32,
+	pub spawn_y: i32,
+	pub spawn_z: i32,
 
-	pub serverBrands: Vec<String>,
+	pub server_brands: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LevelDatForgeData {
 	pub registries: nbt::Map<String, LevelDatForgeRegistry>,
-	pub loadingModList: Vec<LevelDatForgeMod>,
+	pub loading_mod_list: Vec<LevelDatForgeMod>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -106,8 +106,8 @@ pub struct LevelDatForgeRegistryEntry {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LevelDatForgeMod {
-	pub modId: String,
-	pub modVersion: String,
+	pub mod_id: String,
+	pub mod_version: String,
 }
 
 // #[derive(Clone, Debug, Deserialize)]
@@ -122,7 +122,7 @@ pub struct Chunk {
 	pub sections: Vec<ChunkSection>,
 
 	#[serde(rename = "LastUpdate")]
-	pub lastUpdate: i64,
+	pub last_update: i64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -137,7 +137,7 @@ pub struct ChunkSection {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ChunkBlocks {
 	#[serde(rename = "data")]
-	pub blockArray: Option<Vec<i64>>,
+	pub blocks_array: Option<Vec<i64>>,
 	pub palette: Vec<BlockState>,
 }
 
