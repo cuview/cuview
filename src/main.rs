@@ -368,7 +368,7 @@ fn main() {
 				mapped_at_creation: false,
 			});
 			// #[cfg(false)]
-			let projection = Mat4::perspective_rh(
+			let projection = glam::camera::rh::proj::directx::perspective(
 				110f32.to_radians(),
 				img_width as f32 / img_height as f32,
 				0.01,
@@ -379,7 +379,7 @@ fn main() {
 			let forward = rot.transform_vector3(Vec3::Z);
 			dbg!(forward);
 			let camera =
-				Mat4::look_at_rh(args.camera_origin.0, args.camera_origin.0 + forward, Vec3::Y);
+				glam::camera::rh::view::look_at_mat4(args.camera_origin.0, args.camera_origin.0 + forward, Vec3::Y);
 
 			/* let rot = Mat4::from_rotation_y(args.cameraAngles.0.y.to_radians()) *
 				Mat4::from_rotation_x(args.cameraAngles.0.x.to_radians());
