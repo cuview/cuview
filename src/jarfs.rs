@@ -11,7 +11,7 @@ use std::{
 use anyhow::anyhow;
 use zip::{ZipArchive, ZipWriter, read::ZipFile, result::ZipResult};
 
-use crate::types::resource_location::ResourceKind;
+use crate::{AResult, types::resource_location::ResourceKind};
 
 enum ZipInput {
 	File(File),
@@ -88,12 +88,7 @@ impl JarFS {
 		Ok(new)
 	}
 
-	pub fn insert_jar(
-		&mut self,
-		filename: &Path,
-		zip: Vec<u8>,
-		insert: InsertJar,
-	) -> anyhow::Result<()> {
+	pub fn insert_jar(&mut self, filename: &Path, zip: Vec<u8>, insert: InsertJar) -> AResult {
 		let jar = JarFile::from_memory(filename, zip)?;
 		match insert {
 			InsertJar::Before => self.0.insert(0, jar),

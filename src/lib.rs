@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 pub(crate) type JsonValue = serde_json::value::Value;
+pub type AResult<T = ()> = anyhow::Result<T>;
 
 pub mod jarfs;
 pub mod loader;

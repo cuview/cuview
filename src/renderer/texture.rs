@@ -8,6 +8,7 @@ use glam::{IVec2, UVec2, ivec2, uvec2};
 
 use super::model::ModelCache;
 use crate::{
+	AResult,
 	jarfs::JarFS,
 	types::{ResourceLocation, resource_location::ResourceKind},
 };
@@ -74,6 +75,7 @@ impl Atlas {
 		let len = self.entries.len() as u32;
 		let y = len / width;
 		let x = if y == 0 { len % width } else { width };
+		let y = if y == 0 { 1 } else { y };
 		let res = uvec2(x, y) * UVec2::splat(self.tex_diameter as u32);
 		// powers of two required for mipmapping
 		let res = uvec2(res.x.next_power_of_two(), res.y.next_power_of_two());
@@ -100,7 +102,7 @@ impl Cartographer {
 		fs: &JarFS,
 		models: &ModelCache,
 		device: &wgpu::Device,
-	) -> anyhow::Result<(Self, Vec<Image>)> {
+	) -> AResult<(Self, Vec<Image>)> {
 		let limits = device.limits();
 		assert!(limits.max_texture_array_layers >= u8::MAX as u32);
 		let max_texture_diameter = limits.max_texture_dimension_3d as usize;
@@ -191,6 +193,7 @@ impl Cartographer {
 			.fold(UVec2::splat(0), |res, v| {
 				uvec2(res.x.max(v.x), res.y.max(v.y))
 			});
+		dbg!((&diameters, layer_size));
 		let mut layers = Vec::with_capacity(atlases.len());
 		for (aid, atlas) in atlases.iter().enumerate() {
 			let mut layer = Image::empty(layer_size);
@@ -331,7 +334,7 @@ impl Image {
 		})
 	}
 
-	pub fn save_to_file(&self, path: &Path) -> anyhow::Result<()> {
+	pub fn save_to_file(&self, path: &Path) -> AResult {
 		let mut file = std::fs::File::create(path)?;
 		let mut encoder = png::Encoder::new(&mut file, self.size.x, self.size.y);
 		encoder.set_color(png::ColorType::Rgba);
