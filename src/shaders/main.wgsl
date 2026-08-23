@@ -1,13 +1,13 @@
 struct VIn {
 	@builtin(instance_index)
 	instance: u32,
-	
+
 	@location(0)
 	pos: vec3<f32>,
-	
+
 	@location(1)
 	uv: vec2<f32>,
-	
+
 	@location(2)
 	texId: u32,
 }
@@ -15,10 +15,10 @@ struct VIn {
 struct VOut {
 	@builtin(position)
 	pos: vec4<f32>,
-	
+
 	@location(0)
 	uv: vec2<f32>,
-	
+
 	@interpolate(flat)
 	@location(1)
 	texLayer: u32,
@@ -41,7 +41,12 @@ var<storage, read> atlasDiameters: array<u32>;
 @binding(2)
 var atlas: texture_2d_array<f32>;
 
-var<immediate> section: i32;
+struct Immediates {
+	chunkPos: vec2<i32>,
+	section: i32,
+}
+
+var<immediate> immediates: Immediates;
 
 fn translationMat(t: vec3<f32>) -> mat4x4<f32> {
 	return mat4x4<f32>(
@@ -77,19 +82,20 @@ fn rotationMat(axis: vec3<f32>, angle: f32) -> mat4x4<f32> {
 fn blockTranslation(rawBlockId: u32) -> vec3<f32> {
 	let chunkWidth: u32 = u32(16);
 	let blocksInLayer: u32 = chunkWidth * chunkWidth;
-	
+
 	let iy = rawBlockId / blocksInLayer;
 	let blockId = rawBlockId - iy * blocksInLayer;
 	let tz = f32(blockId / chunkWidth);
 	let tx = f32(blockId % chunkWidth);
-	
+
 	// section translation
-	let ty = f32(iy) + 16.0 * f32(section);
-	
+	let ty = f32(iy) + 16.0 * f32(immediates.section);
+
 	// debugging
 	// let tx = tx + 16.0 * f32(section);
-	
-	return vec3<f32>(tx, ty, tz);
+
+	let chunkPos = vec3<f32>(f32(immediates.chunkPos.x), 0, f32(immediates.chunkPos.y)) * 16;
+	return vec3<f32>(tx, ty, tz) + chunkPos;
 }
 
 
@@ -107,12 +113,12 @@ fn vsMain(in: VIn) -> VOut {
 		rotationMat(vec3(1.0, 0.0, 0.0), rotX) *
 		translationMat(vec3(-0.5))
 	;
-	
+
 	let pos = camera.projection * camera.view * model * vec4<f32>(in.pos, 1.0);
-	
+
 	let texLayer = (in.texId & (0xFFu << 24u)) >> 24u;
 	let texId = in.texId & 0xFFFFFFu;
-	
+
 	let diameter = atlasDiameters[texLayer];
 	let atlasSize = textureDimensions(atlas);
 	let scale = f32(diameter) / vec2<f32>(atlasSize);
@@ -121,10 +127,10 @@ fn vsMain(in: VIn) -> VOut {
 		f32(texId % widthInElems),
 		f32(texId / widthInElems),
 	);
-	
+
 	var uv = vec2<f32>(in.uv.x, 1.0 - in.uv.y); // origin swap
 	uv = scale * uv + scale * offset;
-	
+
 	return VOut(
 		pos,
 		uv,
@@ -138,10 +144,8 @@ var atlasSampler: sampler;
 
 @fragment
 fn fsMain(in: VOut) -> @location(0) vec4<f32> {
-	// FIXME: currently (0.9.0) Naga does not respect spec and only accepts i32s
-	let layer = i32(in.texLayer);
-	let res = textureSample(atlas, atlasSampler, in.uv, layer);
-	
+	let res = textureSample(atlas, atlasSampler, in.uv, in.texLayer);
+
 	// cheap hack to fix blending of overlapping transparency
 	if res.a <= 5.0 / 255.0 { discard; }
 	return res;

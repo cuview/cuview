@@ -148,6 +148,9 @@ struct Args {
 	#[arg(short, long)]
 	target_chunk: ChunkPos,
 
+	#[arg(short, long)]
+	chunk_radius: usize,
+
 	#[arg(long, default_value_t = Vec3Arg(vec3(-5.0, 4.0, -5.0)))]
 	camera_origin: Vec3Arg,
 
@@ -248,9 +251,9 @@ fn main() {
 	let dim = wrangler.load_dimension(dim);
 
 	let target_chunk = args.target_chunk;
-	let region = wrangler.load_region(&dim, target_chunk.into());
-	let chunk = wrangler.load_chunk(&region, target_chunk);
-	let chunk = chunk.borrow();
+	// let region = wrangler.load_region(&dim, target_chunk.into());
+	// let chunk = wrangler.load_chunk(&region, target_chunk);
+	// let chunk = chunk.borrow();
 	/*let world = cuview::world::World::new(&worldRoot);
 	let dim = world.borrow_mut().new_dimension("overworld".into(), &worldRoot);
 	let region = dim.borrow_mut().new_region(RegionPos::new(0, 0));
@@ -382,7 +385,7 @@ fn main() {
 			.unwrap();
 
 		let (camera_buffer, img_width, img_height) = {
-			let (img_width, img_height) = (1280, 720);
+			let (img_width, img_height) = (1920, 1080);
 			let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 				label: None,
 				size: size_of::<[f32; 32]>() as wgpu::BufferAddress,
@@ -690,7 +693,7 @@ fn main() {
 		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: None,
 			bind_group_layouts: &[Some(&bind_group_layout)],
-			immediate_size: 4,
+			immediate_size: 12,
 		});
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: None,
@@ -745,6 +748,27 @@ fn main() {
 			cache: None,
 		});
 
+		macro_rules! submit {
+			($encoder:expr) => {
+				queue.submit(Some($encoder.finish()))
+			};
+		}
+
+		macro_rules! poll {
+			($submission:expr) => {
+				match device.poll(wgpu::PollType::Wait {
+				submission_index: Some($submission),
+				timeout: Some(std::time::Duration::from_secs_f32(1.5)),
+			}) {
+				Ok(wgpu::PollStatus::Poll) => unreachable!(
+					"Device::poll with PollType::Wait should never return PollStatus::Poll"
+				),
+				Ok(wgpu::PollStatus::QueueEmpty | wgpu::PollStatus::WaitSucceeded) => {},
+				Err(err) => panic!("Device::poll failed: {err}"),
+			}
+			};
+		}
+
 		let mut encoder = device.create_command_encoder(&Default::default());
 		{
 			let color_view = frame_texture.create_view(&Default::default());
@@ -783,95 +807,122 @@ fn main() {
 				multiview_mask: None,
 			});
 			drop(clear_pass);
+		};
+		poll!(submit!(encoder));
 
+		{
+			let color_view = frame_texture.create_view(&Default::default());
+			let multisample_view = frame_texture_multisample.create_view(&Default::default());
+			let depth_view = frame_depth_texture.create_view(&wgpu::TextureViewDescriptor {
+				aspect: wgpu::TextureAspect::DepthOnly,
+				..Default::default()
+			});
 			let mut indirect_draws = vec![];
-			for section_y in chunk.sections() {
-				indirect_draws.clear();
-				let section = chunk.get_section(section_y).unwrap();
-				let section = section.borrow();
-				for block_pos in target_chunk.blocks_in_section(section_y) {
-					let state = section.get_block(block_pos);
-					let modelsets = statemap.get(&state).unwrap();
-					for set in modelsets {
-						// FIXME: weighting
-						let model = &set[blockpos_rng(block_pos).rem_euclid(set.len())];
-						let model_id = model.model;
-						if let Some((base_vertex, num_verts)) =
-							geometry.model_info.get(&model_id).copied()
-						{
-							let block_rel = block_pos.chunk_relative();
-							let block_index = block_rel.y * ChunkPos::DIAMETER_BLOCKS.pow(2) +
-								block_rel.z * ChunkPos::DIAMETER_BLOCKS +
-								block_rel.x;
+			let chunk_radius = args.chunk_radius as i32;
+			let chunk_positions = (target_chunk.z - chunk_radius ..= target_chunk.z + chunk_radius)
+				.flat_map(|z| (target_chunk.x - chunk_radius ..= target_chunk.x + chunk_radius)
+					.map(move |x| ChunkPos::new(x, z)));
+			for chunk_pos in chunk_positions {
+				dbg!(chunk_pos);
+				let region = if let Some(region) = dim.borrow().get_region(chunk_pos.into()) {
+					region
+				} else {
+					wrangler.load_region(&dim, chunk_pos.into())
+				};
+				let chunk = wrangler.load_chunk(&region, chunk_pos);
+				let chunk = chunk.borrow();
+				for section_y in chunk.sections() {
+					indirect_draws.clear();
+					let section = chunk.get_section(section_y).unwrap();
+					let section = section.borrow();
+					for block_pos in chunk_pos.blocks_in_section(section_y) {
+						let state = section.get_block(block_pos);
+						let modelsets = statemap.get(&state).unwrap();
+						for set in modelsets {
+							// FIXME: weighting
+							let model = &set[blockpos_rng(block_pos).rem_euclid(set.len())];
+							let model_id = model.model;
+							if let Some((base_vertex, num_verts)) =
+								geometry.model_info.get(&model_id).copied()
+							{
+								let block_rel = block_pos.chunk_relative();
+								let block_index = block_rel.y * ChunkPos::DIAMETER_BLOCKS.pow(2) +
+									block_rel.z * ChunkPos::DIAMETER_BLOCKS +
+									block_rel.x;
 
-							// pack rotations into the unused upper 20 bits of instance id
-							// let rot = vec2(45f32.to_radians(), 0.0/* (14.5 * blockIndex as
-							// f32).to_radians() */);
-							let rot = vec2(
-								model.x_rotation.unwrap_or(0.0).to_radians(),
-								model.y_rotation.unwrap_or(0.0).to_radians(),
-							);
-							let rot_turns =
-								Vec2::from((rot / TAU).as_ref().map(|v| v.rem_euclid(1.0)));
-							let rot_discrete = (rot_turns * 1024.0).as_uvec2();
-							let rot_packed = (rot_discrete.y & 1023) << 10 | rot_discrete.x & 1023;
+								// pack rotations into the unused upper 20 bits of instance id
+								// let rot = vec2(45f32.to_radians(), 0.0/* (14.5 * blockIndex as
+								// f32).to_radians() */);
+								let rot = vec2(
+									model.x_rotation.unwrap_or(0.0).to_radians(),
+									model.y_rotation.unwrap_or(0.0).to_radians(),
+								);
+								let rot_turns =
+									Vec2::from((rot / TAU).as_ref().map(|v| v.rem_euclid(1.0)));
+								let rot_discrete = (rot_turns * 1024.0).as_uvec2();
+								let rot_packed = (rot_discrete.y & 1023) << 10 | rot_discrete.x & 1023;
 
-							let instance = rot_packed << 12 | block_index as u32;
-							indirect_draws.extend(
-								DrawIndirectArgs {
-									first_vertex: base_vertex as u32,
-									vertex_count: num_verts as u32,
-									first_instance: instance,
-									instance_count: 1,
-								}
-								.as_bytes(),
-							);
+								let instance = rot_packed << 12 | block_index as u32;
+								indirect_draws.extend(
+									DrawIndirectArgs {
+										first_vertex: base_vertex as u32,
+										vertex_count: num_verts as u32,
+										first_instance: instance,
+										instance_count: 1,
+									}
+									.as_bytes(),
+								);
+							}
 						}
 					}
-				}
 
-				let indirect_buffer =
-					&indirect_buffers[(section_y - ChunkPos::SECTIONS.start()) as usize];
-				queue.write_buffer(indirect_buffer, 0, &indirect_draws);
-				// queue.submit(None);
-				let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-					label: None,
-					color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-						view: &multisample_view,
-						depth_slice: None,
-						resolve_target: Some(&color_view),
-						ops: wgpu::Operations {
-							load: wgpu::LoadOp::Load,
-							store: wgpu::StoreOp::Store,
-						},
-					})],
-					depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-						view: &depth_view,
-						depth_ops: Some(wgpu::Operations {
-							load: wgpu::LoadOp::Load,
-							store: wgpu::StoreOp::Store,
+					let indirect_buffer =
+						&indirect_buffers[(section_y - ChunkPos::SECTIONS.start()) as usize];
+					queue.write_buffer(indirect_buffer, 0, &indirect_draws);
+					// queue.submit(None);
+					let mut encoder = device.create_command_encoder(&Default::default());
+					let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+						label: None,
+						color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+							view: &multisample_view,
+							depth_slice: None,
+							resolve_target: Some(&color_view),
+							ops: wgpu::Operations {
+								load: wgpu::LoadOp::Load,
+								store: wgpu::StoreOp::Store,
+							},
+						})],
+						depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+							view: &depth_view,
+							depth_ops: Some(wgpu::Operations {
+								load: wgpu::LoadOp::Load,
+								store: wgpu::StoreOp::Store,
+							}),
+							stencil_ops: None,
 						}),
-						stencil_ops: None,
-					}),
-					timestamp_writes: None,
-					occlusion_query_set: None,
-					multiview_mask: None,
-				});
-				pass.set_pipeline(&pipeline);
-				pass.set_bind_group(0, &bind_group, &[]);
-				pass.set_vertex_buffer(0, block_models_buffer.slice(..));
-				pass.set_immediates(0, bytemuck::bytes_of(&(section_y as i32)));
-				// pass.set_push_constants(wgpu::ShaderStages::VERTEX, 4, );
-				pass.multi_draw_indirect(
-					indirect_buffer,
-					0,
-					(indirect_draws.len() / size_of::<DrawIndirectArgs>()) as u32,
-				);
-				// drop(pass);
-				// queue.submit(None);
+						timestamp_writes: None,
+						occlusion_query_set: None,
+						multiview_mask: None,
+					});
+					pass.set_pipeline(&pipeline);
+					pass.set_bind_group(0, &bind_group, &[]);
+					pass.set_vertex_buffer(0, block_models_buffer.slice(..));
+					pass.set_immediates(8, bytemuck::bytes_of(&(section_y as i32)));
+					pass.set_immediates(0, bytemuck::bytes_of(&chunk_pos.x));
+					pass.set_immediates(4, bytemuck::bytes_of(&chunk_pos.z));
+					pass.multi_draw_indirect(
+						indirect_buffer,
+						0,
+						(indirect_draws.len() / size_of::<DrawIndirectArgs>()) as u32,
+					);
+					drop(pass);
+					poll!(submit!(encoder));
+				}
 			}
-			// drop(pass);
+		}
 
+		let mut encoder = device.create_command_encoder(&Default::default());
+		{
 			encoder.copy_texture_to_buffer(
 				frame_texture.as_image_copy(),
 				wgpu::TexelCopyBufferInfo {
@@ -885,20 +936,10 @@ fn main() {
 				frame_size,
 			)
 		}
-		let submission = queue.submit(Some(encoder.finish()));
-
+		let submission = submit!(encoder);
 		let slice = frame_copy_buffer.slice(..);
 		slice.map_async(wgpu::MapMode::Read, |_| {});
-		match device.poll(wgpu::PollType::Wait {
-			submission_index: Some(submission),
-			timeout: Some(std::time::Duration::from_secs_f32(1.5)),
-		}) {
-			Ok(wgpu::PollStatus::Poll) => unreachable!(
-				"Device::poll with PollType::Wait should never return PollStatus::Poll"
-			),
-			Ok(wgpu::PollStatus::QueueEmpty | wgpu::PollStatus::WaitSucceeded) => {},
-			Err(err) => panic!("Device::poll failed: {err}"),
-		}
+		poll!(submission);
 
 		let padded = slice
 			.get_mapped_range()
