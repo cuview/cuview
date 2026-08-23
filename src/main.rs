@@ -289,22 +289,6 @@ fn main() -> AResult {
 					contents: bytemuck::cast_slice(&geometry.vertices),
 				});
 
-		// assuming worst case every block in section is composed of 10 submodels
-		const SUBMODELS_PER_BLOCK: usize = 10;
-		const SUBMODELS_PER_SECTION: usize =
-			ChunkPos::DIAMETER_BLOCKS.pow(3) as usize * SUBMODELS_PER_BLOCK;
-		let indirect_buffers: Vec<_> = ChunkPos::SECTIONS
-			.map(|_| {
-				render.device.create_buffer(&wgpu::BufferDescriptor {
-					label: None,
-					size: (SUBMODELS_PER_SECTION * size_of::<wgpu::util::DrawIndirectArgs>())
-						as wgpu::BufferAddress,
-					usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
-					mapped_at_creation: false,
-				})
-			})
-			.collect();
-
 		let shader = render
 			.device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -449,6 +433,8 @@ fn main() -> AResult {
 			a: 1.0,
 		})?;
 
+		let mut encoder = render.device.create_command_encoder(&Default::default());
+		let views = framebuffer.views();
 		{
 			let mut indirect_draws = vec![];
 			let chunk_radius = args.chunk_radius as i32;
@@ -458,7 +444,6 @@ fn main() -> AResult {
 						.map(move |x| ChunkPos::new(x, z))
 				});
 			for chunk_pos in chunk_positions {
-				dbg!(chunk_pos);
 				let region = if let Some(region) = dim.borrow().get_region(chunk_pos.into()) {
 					region
 				} else {
@@ -511,13 +496,14 @@ fn main() -> AResult {
 					}
 
 					let indirect_buffer =
-						&indirect_buffers[(section_y - ChunkPos::SECTIONS.start()) as usize];
-					render
-						.queue
-						.write_buffer(indirect_buffer, 0, &indirect_draws);
+						render
+							.device
+							.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+								label: None,
+								usage: wgpu::BufferUsages::INDIRECT,
+								contents: &indirect_draws,
+							});
 
-					let mut encoder = render.device.create_command_encoder(&Default::default());
-					let views = framebuffer.views();
 					let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 						label: None,
 						color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -548,15 +534,14 @@ fn main() -> AResult {
 					pass.set_immediates(0, bytemuck::bytes_of(&chunk_pos.x));
 					pass.set_immediates(4, bytemuck::bytes_of(&chunk_pos.z));
 					pass.multi_draw_indirect(
-						indirect_buffer,
+						&indirect_buffer,
 						0,
 						(indirect_draws.len() / size_of::<DrawIndirectArgs>()) as u32,
 					);
-					drop(pass);
-					render.submit_and_poll(encoder);
 				}
 			}
 		}
+		render.submit_and_poll(encoder);
 
 		let pixels = framebuffer.read(&render)?;
 		let file = std::fs::OpenOptions::new()

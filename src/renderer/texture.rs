@@ -193,7 +193,6 @@ impl Cartographer {
 			.fold(UVec2::splat(0), |res, v| {
 				uvec2(res.x.max(v.x), res.y.max(v.y))
 			});
-		dbg!((&diameters, layer_size));
 		let mut layers = Vec::with_capacity(atlases.len());
 		for (aid, atlas) in atlases.iter().enumerate() {
 			let mut layer = Image::empty(layer_size);
