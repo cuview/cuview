@@ -8,6 +8,12 @@ edition = "2024"
 # clashes with formatting conventions
 tabs_in_doc_comments = "allow"
 
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
 [lib]
 name = "cuview"
 path = "src/lib.rs"
